@@ -4,9 +4,6 @@ classes for representing adl formulas
 
 class Concept:
 
-    self.symbol
-    self.description
-
     def __init__(self, symbol, description="Generic Concept"):
         if(symbol):
             self.symbol = symbol
