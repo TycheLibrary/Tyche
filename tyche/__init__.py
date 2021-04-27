@@ -1,5 +1,5 @@
 from adl import Concept
 
 if __name__ == "__main__":
-    x = Concept("X","first concept!")
+    x = Atom("X","first concept!")
     print(x)
