@@ -1,5 +1,12 @@
-from adl import Concept, Atom
+from adl import *
 
 if __name__ == "__main__":
-    x = Atom("X","first concept!")
+    x = atom("x")
     print(x)
+    y = atom("y")
+    z = atom('z')
+    cond = conditional(x,y,z)
+    print(cond)
+    role = Role('r')
+    marginal = marginal(role,x,y)
+    print(marginal)

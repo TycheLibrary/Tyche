@@ -33,8 +33,6 @@ class Concept(tuple):
             }#language core
         if operator=='Atom' and not cls.is_valid_symbol(symbol):
             raise ADLException('Symbols must begin with lowercase letter, and contain only alphanumeric characters or underscores')
-        if operator=='Marginal' and not cls.is_valid_symbol(role):
-            raise ADLException('Roles must begin with lowercase letter, and contain only alphanumeric characters or underscores')
         if not operator in ['Yes','No','Atom','Conditional','Marginal']:
             raise ADLException('Operator must be Yes, No, Atom, Conditional or Marginal')
         return constructors.get(operator)(cls, symbol, term1, term2, term3, role)
@@ -52,47 +50,47 @@ class Concept(tuple):
     #properties included via decorators
     @property
     def operator(self):
-        return __tuple__.getItem(self,0)
+        return self[0]
     @property
     def symbol(self):
-        if self.operator()=='Atom':
-            return __tuple__.getItem(self,1)
+        if self.operator=='Atom':
+            return self[1]
         else:
             return None
     @property
     def condition(self):
-        if self.operator()=='Conditional':
-            return __tuple__.getItem(self,1)
+        if self.operator=='Conditional':
+            return self[1]
         else:
             return None
     @property
     def positive(self):
-        if self.operator()=='Conditional':
-            return __tuple__.getItem(self,2)
+        if self.operator=='Conditional':
+            return self[2]
         else:
             return None
     @property
     def negative(self):
-        if self.operator()=='Conditional':
-            return __tuple__.getItem(self,3)
+        if self.operator=='Conditional':
+            return self[3]
         else:
             return None
     @property
     def role(self):
-        if self.operator()=='Marginal':
-            return __tuple__.getItem(self,1)
+        if self.operator=='Marginal':
+            return self[1]
         else:
             return None
     @property
     def event(self):
-        if self.operator()=='Marginal':
-            return __tuple__.getItem(self,2)
+        if self.operator=='Marginal':
+            return self[2]
         else:
             return None
     @property
     def margin(self):
-        if self.operator()=='Marginal':
-            return __tuple__.getItem(self,3)
+        if self.operator=='Marginal':
+            return self[3]
         else:
             return None
     
@@ -143,19 +141,19 @@ class Role(tuple):
     Roles are immutable and encoded via tuples. 
     We currently just use atomic roles, but use these structures to allow for dynamic modalities in future.
     '''
-    def __new__(cls, role: str):
+    def __new__(cls, role):
         '''Creates an atomic concept, with the symbol symbol
            
            symbol should be an alpha-numeric+underscore string, starting with a lower case letter.
            a '.' is prepended to the symbol to distinguish it from a concept.
         '''
-        if(role==None or len(role)<1 or not role[0].islower()):
+        if(not Concept.is_valid_symbol(role)):
             raise ADLException("Naming error, atomic concept symbols must begin with lower case letters")
-        return tuple.__new__(cls, ('.'+role))
+        return tuple.__new__(cls, (role))
 
     @property
     def role(self):
-        return __tuple__.getitem(self,0)
+        return self[0]
 
     def __repr__(self):
         '''Gives the concise mathematical representation of the concept
