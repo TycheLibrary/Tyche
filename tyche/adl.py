@@ -25,8 +25,8 @@ class Concept(tuple):
     def __new__(cls, operator, symbol=None, term1=None, term2=None, term3=None, role=None):
         '''Constructs all formulas as tuples'''
         constructors = {#lambdas to construct formulas
-            'No': lambda c, s, x, y, z, r: tuple.__new__(c, ('No')),
-            'Yes': lambda c, s, x, y, z, r: tuple.__new__(c, ('Yes')),
+            'No': lambda c, s, x, y, z, r: tuple.__new__(c, ('No',)),
+            'Yes': lambda c, s, x, y, z, r: tuple.__new__(c, ('Yes',)),
             'Atom': lambda c, s, x, y, z, r : tuple.__new__(c, ('Atom', s)),
             'Conditional': lambda c, s, x, y, z, r: tuple.__new__(c, ('Conditional',x,y,z)),
             'Marginal': lambda c, s, x, y, z, r: tuple.__new__(c, ('Marginal', r,x,y))
@@ -102,10 +102,10 @@ class Concept(tuple):
 
     def __repr__(self):
         '''Returns a concise mathematical representation of the formula'''
-        reps ={
-            'Atom': lambda x: x[1],
-            'Yes': lambda x: 'Y',
+        reps = {
             'No': lambda x: 'N',
+            'Yes': lambda x: 'Y',
+            'Atom': lambda x: x[1],
             'Conditional': lambda x: '({0}?{1}:{2})'.format(x[1].__repr__(), x[2].__repr__(), x[3].__repr__()),
             'Marginal': lambda x: '.{0}({1}|{2})'.format(x[1].__repr__(),x[2].__repr__(),x[3].__repr__())
             }
@@ -116,12 +116,32 @@ class Concept(tuple):
         Returning repr for now'''
         return __repr__(self)
 
+    def __eq__(self,other):
+        eqs = {
+                'No': lambda x, y: True,
+                'Yes': lambda x, y: True,
+                'Atom': lambda x, y: x.symbol == y.symbol,
+                'Conditional': lambda x, y: \
+                        x.condition==y.condition and \
+                        x.positive==y.positive and \
+                        x.negative==y.negative,
+                'Marginal': lambda x, y:\
+                        x.role==y.role and \
+                        x.event==y.event and \
+                        x.margin==y.margin
+                }
+        return self.operator==other.operator and \
+                eqs[self.operator](self,other)
+                                
+                        
+
+
     #Proof theoretic functions here.
     def normal_form(self) -> 'Concept':
         '''Returns the tree normal form of a Concept, where atoms are ordered alphabetically.'''
         pass
 
-    def is_equal(self, adl_form: 'Concept') -> bool:
+    def is_equivalent(self, adl_form: 'Concept') -> bool:
         '''Returns true if this Concept is provably equivalent to adl_form'''
         pass
 
