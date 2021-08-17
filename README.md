@@ -7,21 +7,30 @@ where concepts and roles are aleatoric, in that they are assumed to be determine
 This allows fine grained modelling of probabilistic belief systems, with a rigorous mathematical foundation.
 
 
-The *tyche* package consists of the following subpackages and modules:
-- **language**. This is the aleatoric description logic langauge subpackage for representing formulas, and performing basic transformations.
-  It consists of the following modules:
-  - **adl**, a module for representing the syntax of the language, including:
+The *tyche* package consists of the following modules:
+- **language**. This is the aleatoric description logic langauge module for representing formulas, and performing basic transformations.
+  It consists of the following classes:
      - the logical operators *Concept*, *Conditional*, *Expectation* and *LeastFixedPoint*
      - and the role operators *Role*, *Test*, *Iterate*, and *Combine*
-  - **proof**, a module consisting of theorem proving utilities.   
-- **logic**. This is the aleatoric description logic package for intensional reasoning. It consists of the modules:
-  - **axiom**, a module for representing beliefs of a universal nature, or TBooks.
-  - **assertion**, a module for representing beliefs pertsaiing to a specific individual, or ABooks.
-  - **theory**, a module for inference given axioms and assertions.
-- **models**. This is the module for representing extensional information, or a specific realisation of an aleatoric theory.
-  It provides a framework for writing python classes that represent aleatoric information constrained by aleatoric theories.
-  It also permits learning and database synchronisation operations.
-- **test** package will contain unit tests as they are written.
+     - *Proof*, theorem proving utilities.   
+- **logic**. This is the aleatoric description logic module for reasoning. It consists of the classes:
+  - *Axiom*, a class for representing intensional beliefs, or TBooks.
+  - *Assertion*, a class for representing extensional beliefs, or ABooks.
+  - *Theory*, a class for inference given axioms and assertions, satisfiability and consistency checking
+  - this class will have multiple utility classes to support the extensive algorithms required for satisfiability testing
+- **models**. This is the module for representing interpretations of an aleatoric theory, 
+    which is essentially a belief model for decision support.
+    It provides a framework for writing python classes that represent aleatoric information constrained by aleatoric theories.
+    It also permits learning and database synchronisation operations, and consists of the classes:
+  - *Distribution*, various classes for representing distributions over fields that an individual can have
+  - *Individual*, for representing aleatoric individuals. 
+    These may be subclassed and decorated with aleatoric concepts, roles and axioms.
+  - *BeliefBase*, a module for synchronising individuals with databases,
+     checking consistency with theories, handling queries, and performing learning operations given observations.
+  - *SqlAleatory* a wrapper for sqlalchemy to handle aleatoric information.
+
+The Tyche project also consists of the package *test* which will contain unit tests as they are written,
+and an *examples* directory containing protoypes of python classes that use the tyche package.
 
 This page will be updated as these modules and packages are fleshed out.
 
