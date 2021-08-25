@@ -83,6 +83,9 @@ class Concept
         necesssarily less than or equal to the probabiliy of concept'''
         #need to consider how to effectively implement this
         #I think move everything to normal form and then some traversal?
+        #However, it is more than just inclusion. 
+        #eg x/\~x is always weaker than y\/~y
+        #need to factor out inclusion, then find separating constants
         pass
  
 
@@ -299,25 +302,26 @@ class Expectation(Concept):
 ####End of class expectation#####
 
         
-class FixedPoint(Concept):
+class LeastFixedPoint(Concept):
     '''class for representng the aleatoric if then else construct in the language'''
 
     def __init__(self, variable, concept):
         if is_linear(variable, concept):
             self.variable = variable #role object
             self.concept = concept #concept object
-            else: raise TycheException(variable    
+            else: raise TycheException('Variable '+variable+'not linear in '+concept)    
 
     def __str__(self):
         '''
         Use X as the fixed point quantifier, 
         if least and greatest not relavant?
-        eg FIX-var(father.(bald?YES:var)) the probability of having a bald ancestor on the male line.
+        or is assignment appropriate x<=(father.(bald?YES:x)) (GFP is x>=(father.(bald?x:NO)) "all bald on the male line")
+        eg LFP-x(father.(bald?YES:x)) the probability of having a bald ancestor on the male line.
         '''
-        return 'FIX-'+self.variable+'('+ self.concept+')'
+        return self.variable+'<=('+ self.concept+')'
 
     def __repr__(self):
-        return 'FixedPoint(variable='+repr(self.variable)+', concept='+repr(self.concept)+')'
+        return 'LeastFixedPoint(variable='+repr(self.variable)+', concept='+repr(self.concept)+')'
 
     def __eq__(self, other):
         try:
@@ -364,7 +368,8 @@ class Role:
     An class for representing all ADL roles.
     Abstract class laying out the methods.
 
-    We currently just use atomic roles, but will also represent dynamic roles.
+    We currently just use atomic roles. 
+    Dynamic roles will be realised as abbreviations using complex concepts..
     '''
 ####refactor below
 
@@ -374,15 +379,9 @@ class Role:
         symbol should be an alpha-numeric+underscore string, starting with a lower case letter.
         a '.' is prepended to the symbol to distinguish it from a concept.
         '''
-        self.symbol = role
-
         if(not Concept.is_valid_symbol(role)):
             raise ADLException("Naming error, atomic concept symbols must begin with lower case letters")
-        return tuple.__new__(cls, (role))
-
-    @property
-    def role(self):
-        return self[0]
+        self.symbol = symbol
 
     def __repr__(self):
         '''Gives the concise mathematical representation of the concept
