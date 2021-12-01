@@ -3,7 +3,7 @@ Example python class for prototyping usage of the package
 This example is for tracking student performance (grades)
 and likely project supervisor.
 '''
-import tyche.language as langugae 
+import tyche.language as language 
 import tyche.model as model
 import tyche.logic as logic
 from language.adl import * #....etc 
@@ -11,9 +11,9 @@ from language.adl import * #....etc
 class Person(Individual):
 
     def __init__(self, name=None, gender=None, age=None):
-        self.Name = StringField(name)
-        self.Gender = StringDist('male','female','other')
-        self.Age = UniformDist(0,120)
+        self.name = StringField(name)
+        self.gender = StringDist('male','female','other')
+        self.age = UniformDist(0,120)
 
     @concept('adult')#adult added to concept listener
     def _adult(self):#use underscore by convention?

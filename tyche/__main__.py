@@ -10,3 +10,4 @@ if __name__ == "__main__":
     role = Role('r')
     marginal = marginal(role,x,y)
     print(marginal)
+    print(yes.operator)
