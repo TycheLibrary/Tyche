@@ -303,7 +303,7 @@ class Expectation(Concept):
 
         
 class LeastFixedPoint(Concept):
-    '''class for representng the aleatoric if then else construct in the language'''
+    '''class for representng the aleatoric fixed point construct in the language'''
 
     def __init__(self, variable, concept):
         if is_linear(variable, concept):
@@ -371,7 +371,7 @@ class Role:
     We currently just use atomic roles. 
     Dynamic roles will be realised as abbreviations using complex concepts..
     '''
-####refactor below
+####refactor below####?
 
     def __init__(self, symbol):
         '''
