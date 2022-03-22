@@ -1,10 +1,10 @@
-#tyche
+# Tyche
 
-Python library to represent and reason about aleatoric information. 
-The system includes syntax for describing aleatoric information (in package langauge),
-Aletaoric knowledge bases are a generalisation of description logic knowledge bases,
+Tyche is a Python library to represent and reason about aleatoric information. 
+The system includes syntax for describing aleatoric information (in `tyche.language`),
+Aleatoric knowledge bases are a generalisation of description logic knowledge bases,
 where concepts and roles are aleatoric, in that they are assumed to be determined by the role of a die.
-This allows fine grained modelling of probabilistic belief systems, with a rigorous mathematical foundation.
+This allows fine-grained modelling of probabilistic belief systems, with a rigorous mathematical foundation.
 
 
 The *tyche* package consists of the following modules:
@@ -30,7 +30,6 @@ The *tyche* package consists of the following modules:
   - *SqlAleatory* a wrapper for sqlalchemy to handle aleatoric information.
 
 The Tyche project also consists of the package *test* which will contain unit tests as they are written,
-and an *examples* directory containing protoypes of python classes that use the tyche package.
+and an *examples* directory containing prototypes of python classes that use the tyche package.
 
 This page will be updated as these modules and packages are fleshed out.
-
