@@ -1,4 +1,7 @@
-#tokens
+# IntelliJ IDEA
+.idea
+
+# tokens
 github*
 
 # Byte-compiled / optimized / DLL files

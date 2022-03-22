@@ -1,5 +1,5 @@
 import unittest
-from tyche import adl
+from tyche import language as adl
 from test import test_adl
 from test.test_adl import TestADL
 

@@ -1,1 +1,0 @@
-from tyche import adl

@@ -1,4 +1,4 @@
-from adl import *
+from language import *
 
 if __name__ == "__main__":
     x = atom("x")

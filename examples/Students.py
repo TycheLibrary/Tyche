@@ -1,9 +1,9 @@
-'''
+"""
 Example python class for prototyping usage of the package
 This example is for tracking student performance (grades)
 and likely project supervisor.
-'''
-import tyche.language as language 
+"""
+import tyche.language as language
 import tyche.model as model
 import tyche.logic as logic
 from language.adl import * #....etc 
