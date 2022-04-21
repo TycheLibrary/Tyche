@@ -4,7 +4,7 @@ description logic (ADL) formulas.
 
 ADL is designed to support both mathematical notion and a formal english notion.
 """
-from typing import Final, cast, get_type_hints, TypeVar, Generic, Callable, Type
+from typing import Final, cast, get_type_hints, TypeVar, Callable
 
 
 class TycheLanguageException(Exception):
@@ -51,6 +51,17 @@ class TycheContext:
 
     def eval_role(self, symbol: str) -> RoleProbabilityDistribution:
         raise TycheLanguageException("eval_role is unimplemented for " + type(self).__name__)
+
+
+class EmptyContext(TycheContext):
+    """
+    Provides an empty context for evaluating constant expressions.
+    """
+    def eval_atom(self, symbol: str) -> float:
+        raise TycheLanguageException("Unknown atom {}".format(symbol))
+
+    def eval_role(self, symbol: str) -> RoleProbabilityDistribution:
+        raise TycheLanguageException("Unknown role {}".format(symbol))
 
 
 Probability = TypeVar('Probability', float, int)

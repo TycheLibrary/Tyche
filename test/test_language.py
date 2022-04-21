@@ -93,6 +93,28 @@ class TestLanguage(unittest.TestCase):
         self.assertEqual("((a \u2228 abc) \u2227 (b \u2227 \u00ACa))", str((a | abc) & (b & a.complement())))
         self.assertEqual("(\U0001D53C_X. abc)", str(Expectation("X", abc)))
 
+    def test_eval_constants(self):
+        """
+        Tests the evaluation of constant formulas.
+        """
+        context = EmptyContext()
+        flip = Constant("flip", 0.5)
+
+        self.assertEqual(1, always.eval(context))
+        self.assertEqual(0.5, flip.eval(context))
+        self.assertEqual(0, never.eval(context))
+
+        self.assertEqual(1, (always | never).eval(context))
+        self.assertEqual(0, (always & never).eval(context))
+        self.assertEqual(1, (always | flip).eval(context))
+        self.assertAlmostEqual(0.5, (never | flip).eval(context))
+        self.assertAlmostEqual(0.5 * 0.5, (flip & flip).eval(context))
+        self.assertAlmostEqual(0.5 * 0.5, ((flip & flip) | (never & flip)).eval(context))
+        self.assertAlmostEqual(
+            1 - ((1 - 0.5 * 0.5) * (1 - 1 * 0.5)),
+            ((flip & flip) | (always & flip)).eval(context)
+        )
+
     def test_individuals(self):
         """
         Tests the evaluation of the probability of formulas.
@@ -103,6 +125,8 @@ class TestLanguage(unittest.TestCase):
         y = Atom("y")
         z = Atom("z")
 
+        self.assertEqual(1, always.eval(individual))
+        self.assertEqual(0, never.eval(individual))
         self.assertAlmostEqual(0.5, x.eval(individual))
         self.assertAlmostEqual(0.4 * 0.5 + 0.6 * 0.2, Expectation("sub", y).eval(individual))
         self.assertAlmostEqual(0.4 * 0.5 + 0.6 * 0.8, Expectation("sub", z).eval(individual))
