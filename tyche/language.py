@@ -15,7 +15,7 @@ class TycheLanguageException(Exception):
         self.message = "TycheLanguageException: " + message
 
 
-class RoleProbabilityDistribution:
+class RoleDistribution:
     """
     Represents a probability distribution of contexts for a role.
     The items in the probability distribution use weights to
@@ -23,19 +23,72 @@ class RoleProbabilityDistribution:
     of selecting an item is fixed at 100%.
     """
     def __init__(self):
-        self.values: list[tuple['TycheContext', float]] = []
+        self.entries: list[tuple['TycheContext', float]] = []
         self.total_weight = 0
 
-    def add(self, context: 'TycheContext', weight: float):
+    def _index_of(self, individual: 'TycheContext'):
+        for index, (ctx, _) in enumerate(self.entries):
+            if ctx == individual:
+                return index
+        return None
+
+    def contains(self, individual: 'TycheContext'):
+        """
+        Returns whether this role distribution contains the given individual.
+        """
+        return self._index_of(individual) is not None
+
+    def _update_total_weight(self):
+        total = 0
+        for _, weight in self.entries:
+            total += weight
+        self.total_weight = total
+
+    def add(self, individual: 'TycheContext', weight: float = 1):
+        """
+        Add an individual to this distribution with the given weighting.
+        The weightings of individuals are relative to one another. If
+        an individual already exists in the distribution, then its
+        weighting will be _replaced_.
+
+        If no weight is supplied, then the default of 1 will be used.
+        """
         if weight <= 0:
             raise TycheLanguageException("Value weights must be positive, not {:.3f}".format(weight))
 
-        self.values.append((context, weight))
-        self.total_weight += weight
+        entry = (individual, weight)
+
+        existing_index = self._index_of(individual)
+        if existing_index is not None:
+            self.entries[existing_index] = entry
+        else:
+            self.entries.append(entry)
+
+        self._update_total_weight()
+
+    def remove(self, individual: 'TycheContext'):
+        """
+        Removes the given individual from this distribution.
+        """
+        existing_index = self._index_of(individual)
+        if existing_index is None:
+            return
+
+        del self.entries[existing_index]
+        self._update_total_weight()
 
     def __iter__(self):
+        """
+        Yields tuples of TycheContext objects and their associated
+        probabilities. The sum of all returned probabilities should
+        sum to 1, although there may be some deviance from this due
+        to floating point error.
+        """
         total_weight = self.total_weight
-        for context, weight in self.values:
+        if total_weight == 0:
+            raise TycheLanguageException("This {} is empty".format(type(self).__name__))
+
+        for context, weight in self.entries:
             yield context, weight / total_weight
 
 
@@ -49,7 +102,7 @@ class TycheContext:
     def eval_atom(self, symbol: str) -> float:
         raise TycheLanguageException("eval_atom is unimplemented for " + type(self).__name__)
 
-    def eval_role(self, symbol: str) -> RoleProbabilityDistribution:
+    def eval_role(self, symbol: str) -> RoleDistribution:
         raise TycheLanguageException("eval_role is unimplemented for " + type(self).__name__)
 
 
@@ -60,7 +113,7 @@ class EmptyContext(TycheContext):
     def eval_atom(self, symbol: str) -> float:
         raise TycheLanguageException("Unknown atom {}".format(symbol))
 
-    def eval_role(self, symbol: str) -> RoleProbabilityDistribution:
+    def eval_role(self, symbol: str) -> RoleDistribution:
         raise TycheLanguageException("Unknown role {}".format(symbol))
 
 
@@ -74,7 +127,7 @@ class Role:
     Marks instance methods of classes as roles
     that may be accessed by Tyche formulas.
     """
-    def __init__(self, fn: Callable[[], RoleProbabilityDistribution]):
+    def __init__(self, fn: Callable[[], RoleDistribution]):
         self.fn = fn
 
     def __set_name__(self, owner, name):
@@ -99,11 +152,11 @@ class Individual(TycheContext):
         Individual._populate_available_roles(type(self))
 
     @staticmethod
-    def get_atoms(cls: type['Individual']) -> set[str]:
+    def get_atoms(cls: Type['Individual']) -> set[str]:
         return Individual._populate_available_atoms(cls)
 
     @staticmethod
-    def get_roles(cls: type['Individual']) -> set[str]:
+    def get_roles(cls: Type['Individual']) -> set[str]:
         return Individual._populate_available_roles(cls)
 
     @staticmethod
@@ -133,13 +186,13 @@ class Individual(TycheContext):
         if symbol in getattr(type(self), "_Tyche_atoms"):
             return getattr(self, symbol)
 
-        raise TycheLanguageException("Unknown atom {}".format(symbol))
+        raise TycheLanguageException("Unknown atom {} for type {}".format(symbol, type(self).__name__))
 
-    def eval_role(self, symbol: str) -> RoleProbabilityDistribution:
+    def eval_role(self, symbol: str) -> RoleDistribution:
         if symbol in getattr(type(self), "_Tyche_roles"):
             return getattr(self, symbol)()
 
-        raise TycheLanguageException("Unknown role {}".format(symbol))
+        raise TycheLanguageException("Unknown role {} for type {}".format(symbol, type(self).__name__))
 
 
 class Concept:
@@ -302,7 +355,14 @@ class Atom(Concept):
         raise TycheLanguageException("not yet implemented")
 
     def eval(self, context: TycheContext) -> float:
-        return context.eval_atom(self.symbol)
+        value = context.eval_atom(self.symbol)
+        if value < 0 or value > 1:
+            raise TycheLanguageException(
+                "Evaluation of atom {} did not fall into the range [0, 1], instead was {}".format(
+                    self.symbol, value
+                )
+            )
+        return value
 
     def normal_form(self):
         return self

@@ -26,7 +26,7 @@ class TestIndividual(Individual):
 
     @Role
     def sub(self):
-        dist = RoleProbabilityDistribution()
+        dist = RoleDistribution()
         dist.add(self.sub1, self.sub1Ratio)
         dist.add(self.sub2, 1 - self.sub1Ratio)
         return dist
