@@ -1,7 +1,5 @@
 import unittest
-from tyche import language as adl
-from test import test_adl
-from test.test_adl import TestADL
+from test_language import TestLanguage
 
-if __name__=='__main__':
+if __name__ == '__main__':
   unittest.main(verbosity=2)

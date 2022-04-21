@@ -4,29 +4,63 @@ description logic (ADL) formulas.
 
 ADL is designed to support both mathematical notion and a formal english notion.
 """
-from typing import Final, cast
-
-'''
-Refactor
-Simpler class system. No need for abstract classes of formula.
-The base classes are: No, Yes, Concept, Variable, Conditional, Expectation, LeastFixedPoint.
-Each formula class must provide the methods 
-__str__, 
-__repr__, 
-eval (acts on lambdas, returns a lambda)
-normal_form (produces a normal form of the formula)
-__equal__ (for an ordering of formulas)
-__lt__ (for ordering)
-
-'''
+from typing import Final, cast, List, Tuple, Dict
 
 
-class TycheFormulaException(Exception):
+class TycheLanguageException(Exception):
     """
-    Class for detailing ADL exceptions
+    Class for detailing language exceptions.
     """
     def __init__(self, message):
         self.message = "TycheLanguageException: " + message
+
+
+class RoleProbabilityDistribution:
+    """
+    Represents a probability distribution of contexts for a role.
+    The items in the probability distribution use weights to
+    represent their likelihood of being selected. The probability
+    of selecting an item is fixed at 100%.
+    """
+    def __init__(self):
+        self.values: List[Tuple['TycheContext', float]] = []
+        self.total_weight = 0
+
+    def add(self, context: 'TycheContext', weight: float):
+        if weight <= 0:
+            raise TycheLanguageException("Value weights must be positive, not {:.3f}".format(weight))
+
+        self.values.append((context, weight))
+        self.total_weight += weight
+
+    def __iter__(self):
+        total_weight = self.total_weight
+        for context, weight in self.values:
+            yield context, weight / total_weight
+
+
+class TycheContext:
+    """
+    Provides context for relating variables in formulas
+    (e.g. a, b, c, etc...) to their related objects.
+    Each individual may supply their own context for
+    their variables and roles.
+    """
+    def __init__(self):
+        self.atoms: Dict[str, float] = {}
+        self.roles: Dict[str, RoleProbabilityDistribution] = {}
+
+    def eval_atom(self, symbol: str) -> float:
+        if symbol in self.atoms:
+            return self.atoms[symbol]
+        else:
+            raise TycheLanguageException("Unknown variable")
+
+    def eval_role(self, symbol: str) -> RoleProbabilityDistribution:
+        if symbol in self.roles:
+            return self.roles[symbol]
+        else:
+            raise TycheLanguageException("Unknown variable")
 
 
 class Concept:
@@ -37,20 +71,20 @@ class Concept:
         """
         Returns the child concepts of this concept.
         """
-        raise TycheFormulaException("get_child_concepts is unimplemented for " + type(self).__name__)
+        raise TycheLanguageException("get_child_concepts is unimplemented for " + type(self).__name__)
 
     def __str__(self) -> str:
         """
         gives a compact string representation of the structure of the formula
         in terms of primitive operators
         """
-        raise TycheFormulaException("__str__ is unimplemented for " + type(self).__name__)
+        raise TycheLanguageException("__str__ is unimplemented for " + type(self).__name__)
 
     def __repr__(self) -> str:
         """
         gives the constructor string of the object
         """
-        raise TycheFormulaException("__repr__ is unimplemented for " + type(self).__name__)
+        raise TycheLanguageException("__repr__ is unimplemented for " + type(self).__name__)
 
     # maybe also include a function for giving an optimised inline string representation of a formula.
 
@@ -58,15 +92,15 @@ class Concept:
         """
         return true if formulas are identical
         """
-        raise TycheFormulaException("__eq__ is unimplemented for " + type(self).__name__)
+        raise TycheLanguageException("__eq__ is unimplemented for " + type(self).__name__)
 
     def __lt__(self, other: 'Concept') -> bool:
         """
         establishes a syntactic ordering over formula
         """
-        raise TycheFormulaException("__lt__ is unimplemented for " + type(self).__name__)
+        raise TycheLanguageException("__lt__ is unimplemented for " + type(self).__name__)
 
-    def eval(self, concepts, roles) -> float:
+    def eval(self, context: TycheContext) -> float:
         """
         returns the probability of this concept,
         given the lambda evaluation of roles and concepts.
@@ -75,13 +109,13 @@ class Concept:
         and roles is a function that maps role symbols
         to probability distributions of tuples of concept functions and role functions
         """
-        raise TycheFormulaException("eval is unimplemented for " + type(self).__name__)
+        raise TycheLanguageException("eval is unimplemented for " + type(self).__name__)
 
     def normal_form(self) -> 'Concept':
         """
         Returns the tree normal form of the formula, where atoms are ordered alphabetically.
         """
-        raise TycheFormulaException("normal_form is unimplemented for " + type(self).__name__)
+        raise TycheLanguageException("normal_form is unimplemented for " + type(self).__name__)
 
     def is_equivalent(self, concept: 'Concept') -> bool:
         """
@@ -102,7 +136,7 @@ class Concept:
         # However, it is more than just inclusion.
         # eg x/\~x is always weaker than y\/~y
         # need to factor out inclusion, then find separating constants
-        raise TycheFormulaException("is_weaker is unimplemented for " + type(self).__name__)
+        raise TycheLanguageException("is_weaker is unimplemented for " + type(self).__name__)
 
     def is_stronger(self, concept: 'Concept') -> bool:
         """
@@ -153,8 +187,10 @@ class Atom(Concept):
     This class is used to represent indivisible concepts such
     as always, never, or other named concepts.
     """
-    def __init__(self, symbol):
-        Atom.check_atom_symbol(symbol)
+    def __init__(self, symbol, *, special_symbol=False):
+        if not special_symbol:
+            Atom.check_atom_symbol(symbol)
+
         self.symbol = symbol
 
     @staticmethod
@@ -184,10 +220,10 @@ class Atom(Concept):
         return type(self) == type(other) and self.symbol == cast('Atom', other).symbol
 
     def __lt__(self, other) -> bool:
-        raise TycheFormulaException("this requires some more thought")
+        raise TycheLanguageException("not yet implemented")
 
-    def eval(self, concepts, roles) -> float:
-        return concepts(self.symbol)
+    def eval(self, context: TycheContext) -> float:
+        return context.eval_atom(self.symbol)
 
     def normal_form(self):
         return self
@@ -196,7 +232,7 @@ class Atom(Concept):
         return self == concept
 
     def is_weaker(self, concept):
-        raise TycheFormulaException("is_weaker is unimplemented for " + type(self).__name__)
+        raise TycheLanguageException("is_weaker is unimplemented for " + type(self).__name__)
 
 
 class Constant(Atom):
@@ -205,15 +241,15 @@ class Constant(Atom):
     of the constant is independent.
     """
     def __init__(self, symbol: str, probability: float):
-        super().__init__(symbol)
+        super().__init__(symbol, special_symbol=True)
         self.probability = probability
 
-    def eval(self, concepts, roles) -> float:
+    def eval(self, context: TycheContext) -> float:
         return self.probability
 
 
-always: Final[Constant] = Constant("always", 1)
-never: Final[Constant] = Constant("never", 0)
+always: Final[Constant] = Constant("\u22A4", 1)
+never: Final[Constant] = Constant("\u22A5", 0)
 
 
 class Conditional(Concept):
@@ -226,7 +262,20 @@ class Conditional(Concept):
         self.if_no = if_no
 
     def __str__(self):
-        return "({} ? {} : {})".format(str(self.condition), str(self.if_yes), str(self.if_no))
+        # Shorthand representations.
+        if self.if_yes == always and self.if_no == never:
+            return str(self.condition)
+        if self.if_yes == never and self.if_no == always:
+            return "\u00AC{}".format(str(self.condition))
+        if self.if_no == never:
+            return "({} \u2227 {})".format(str(self.condition), str(self.if_yes))
+        if self.if_yes == always:
+            return "({} \u2228 {})".format(str(self.condition), str(self.if_no))
+
+        # Standard ternary.
+        return "({} ? {} : {})".format(
+            str(self.condition), str(self.if_yes), str(self.if_no)
+        )
 
     def __repr__(self):
         return "Conditional(condition={}, if_yes={}, if_no={})".format(
@@ -243,22 +292,23 @@ class Conditional(Concept):
                 and self.if_no == other.if_no)
 
     def __lt__(self, obj):
-        raise TycheFormulaException("this requires some more thought")
+        raise TycheLanguageException("not yet implemented")
 
-    def eval(self, concepts, roles):
-        cond = self.condition.eval(concepts, roles)
-        return cond * self.if_yes.eval(concepts, roles) + \
-               (1 - cond) * self.if_no.eval(concepts, roles)
+    def eval(self, context: TycheContext):
+        cond = self.condition.eval(context)
+        if_yes = self.if_yes.eval(context)
+        if_no = self.if_no.eval(context)
+        return cond * if_yes + (1 - cond) * if_no
 
     def normal_form(self):
         """
         Returns the tree normal form of the conditional,
         by recursively calling normal for on sub elements.
         """
-        pass  # to come. Long hack
+        raise TycheLanguageException("not yet implemented")
 
     def is_weaker(self, concept):
-        pass
+        raise TycheLanguageException("not yet implemented")
 
 
 class ConditionalWithoutElse(Conditional):
@@ -274,14 +324,14 @@ class ConditionalWithoutElse(Conditional):
 
 class Expectation(Concept):
     """
-    class for representng the aleatoric expectation  construct in the language
+    class for representing the aleatoric expectation construct in the language
     """
-    def __init__(self, role, concept):
-        self.role = role  # role object
-        self.concept = concept  # concept object
+    def __init__(self, role: str, concept: Concept):
+        self.role: str = role
+        self.concept: Concept = concept
 
     def __str__(self):
-        return str(self.role) + '.' + self.concept
+        return "(\U0001D53C_{}. {})".format(self.role, str(self.concept))
 
     def __repr__(self):
         return 'Expectation(role=' + repr(self.role) + ', concept=' + repr(self.concept) + ')'
@@ -295,30 +345,30 @@ class Expectation(Concept):
                 self.concept == other.concept)
 
     def __lt__(self, other):
-        raise TycheFormulaException("this requires some more thought")
+        raise TycheLanguageException("not yet implemented")
 
-    def eval(self, concepts, roles):
+    def eval(self, context: TycheContext):
         """
-        Complex one, need to extract a distribution of roles:
+        Evaluates the concept for all members of the role mapping
+        from the given context to other contexts.
         """
-        dist = roles(self.role)  # dist is a dictionary mapping (concepts, roles) lambda to probabilities
-        prob = 0.0
-        for (c, r) in dist.keys:
-            prob = prob + dist[(c, r)] * self.concept.eval(c, r)
-        return prob
+        total_prob = 0.0
+        for other_context, prob in context.eval_role(self.role):
+            total_prob += prob * self.concept.eval(other_context)
+        return total_prob
 
     def normal_form(self):
         """
         Returns the tree normal form of the conditional,
         by recursively calling normal for on sub elements.
         """
-        pass
+        raise TycheLanguageException("not yet implemented")
 
     def is_equivalent(self, concept):
-        pass
+        raise TycheLanguageException("not yet implemented")
 
     def is_weaker(self, concept):
-        pass
+        raise TycheLanguageException("not yet implemented")
 
 
 class LeastFixedPoint(Concept):
@@ -332,12 +382,12 @@ class LeastFixedPoint(Concept):
             self.variable = variable  # role object
             self.concept = concept  # concept object
         else:
-            raise TycheFormulaException("The variable {} is not linear in {}".format(variable, concept))
+            raise TycheLanguageException("The variable {} is not linear in {}".format(variable, concept))
 
     def __str__(self):
         """
         Use X as the fixed point quantifier,
-        if least and greatest not relavant?
+        if least and greatest not relevant?
         or is assignment appropriate x<=(father.(bald?YES:x)) (GFP is x>=(father.(bald?x:NO)) "all bald on the male line")
         eg LFP-x(father.(bald?YES:x)) the probability of having a bald ancestor on the male line.
         """
@@ -351,51 +401,33 @@ class LeastFixedPoint(Concept):
             return False
 
         other: 'LeastFixedPoint' = cast('LeastFixedPoint', obj)
-        return self.variable == other.variable and \
-               self.concept == other.concept
+        return self.variable == other.variable and self.concept == other.concept
 
     def __lt__(self, other):
-        raise TycheFormulaException("this requires some more thought")
+        raise TycheLanguageException("not yet implemented")
 
-    def eval(self, concepts, roles):
+    def eval(self, context: TycheContext):
         """
         Complex one, needs iteration or equation solving.
         """
-        pass
+        raise TycheLanguageException("not yet implemented")
 
     def normal_form(self):
         """
         Returns the tree normal form of the conditional,
         by recursively calling normal for on sub elements.
         """
-        pass
+        raise TycheLanguageException("not yet implemented")
 
     def is_equivalent(self, concept):
-        pass
+        raise TycheLanguageException("not yet implemented")
 
     def is_weaker(self, concept):
-        pass
+        raise TycheLanguageException("not yet implemented")
 
     @staticmethod
     def is_linear(variable, concept):
         """
         class method to test whether variable is linear in concept
         """
-        pass
-
-
-class Role(Atom):
-    """
-    A class for representing all ADL roles.
-    Abstract class laying out the methods.
-
-    We currently just use atomic roles.
-    Dynamic roles will be realised as abbreviations using complex concepts..
-    """
-    def __init__(self, symbol):
-        """
-        Creates an atomic concept, with the symbol symbol
-        symbol should be an alpha-numeric+underscore string, starting with a lower case letter.
-        a '.' is prepended to the symbol to distinguish it from a concept.
-        """
-        super().__init__(symbol)
+        raise TycheLanguageException("not yet implemented")

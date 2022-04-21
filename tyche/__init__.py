@@ -1,5 +1,3 @@
-from language import *
-
-if __name__ == "__main__":
-    x = Atom("X")
-    print(x)
+"""
+This directory contains tests for Tyche.
+"""
