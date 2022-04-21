@@ -4,7 +4,7 @@ description logic (ADL) formulas.
 
 ADL is designed to support both mathematical notion and a formal english notion.
 """
-from typing import Final, cast, get_type_hints, TypeVar, Callable
+from typing import Final, cast, get_type_hints, TypeVar, Callable, Annotated, Type
 
 
 class TycheLanguageException(Exception):
@@ -64,56 +64,82 @@ class EmptyContext(TycheContext):
         raise TycheLanguageException("Unknown role {}".format(symbol))
 
 
-Probability = TypeVar('Probability', float, int)
+# Marks instance variables of classes as probabilities that
+# may be accessed by Tyche formulas.
+Probability = TypeVar("Probability", float, int)
 
 
 class Role:
+    """
+    Marks instance methods of classes as roles
+    that may be accessed by Tyche formulas.
+    """
     def __init__(self, fn: Callable[[], RoleProbabilityDistribution]):
         self.fn = fn
 
     def __set_name__(self, owner, name):
         if not hasattr(owner, "_Tyche_roles"):
-            setattr(owner, "_Tyche_roles", {})
-        getattr(owner, "_Tyche_roles")[name] = self.fn
+            setattr(owner, "_Tyche_roles", set())
 
+        getattr(owner, "_Tyche_roles").add(name)
         setattr(owner, name, self.fn)
-
-    @staticmethod
-    def eval_role_of(instance: 'Individual', symbol: str) -> RoleProbabilityDistribution:
-        role_fn = None
-        if hasattr(instance, "_Tyche_roles"):
-            roles = getattr(instance, "_Tyche_roles")
-            if symbol in roles:
-                role_fn = roles[symbol]
-
-        if role_fn is None:
-            raise TycheLanguageException("Unknown role {}".format(symbol))
-
-        return role_fn(instance)
 
 
 class Individual(TycheContext):
     """
-    A helper class for creating TycheContext objects using class objects
-    to represent the individuals, and annotations to mark fields and
-    methods as atoms and roles.
+    A helper class for representing individual entities in an aleatoric
+    knowledge base. The variables about the individual are stored as
+    instance variables with the type hint Probability. Roles relating
+    individuals are stored as methods that are annotated with @Role.
+    These individuals can then be used as a context to evaluate Tyche formulas.
     """
     def __init__(self):
         super().__init__()
-        pass
+        Individual._populate_available_atoms(type(self))
+        Individual._populate_available_roles(type(self))
+
+    @staticmethod
+    def get_atoms(cls: type['Individual']) -> set[str]:
+        return Individual._populate_available_atoms(cls)
+
+    @staticmethod
+    def get_roles(cls: type['Individual']) -> set[str]:
+        return Individual._populate_available_roles(cls)
+
+    @staticmethod
+    def _populate_available_atoms(cls):
+        if hasattr(cls, "_Tyche_atoms"):
+            return getattr(cls, "_Tyche_atoms")
+
+        atoms = set()
+        for symbol, type_hint in get_type_hints(cls).items():
+            if type_hint == Probability:
+                atoms.add(symbol)
+
+        setattr(cls, "_Tyche_atoms", atoms)
+        return atoms
+
+    @staticmethod
+    def _populate_available_roles(cls):
+        if hasattr(cls, "_Tyche_roles"):
+            return getattr(cls, "_Tyche_roles")
+
+        # If there were any roles, _Tyche_roles would have already been set.
+        roles = set()
+        setattr(cls, "_Tyche_roles", roles)
+        return roles
 
     def eval_atom(self, symbol: str) -> float:
-        # This is probably pretty slow, we should cache this.
-        hints = get_type_hints(type(self))
-        if symbol not in hints:
-            raise TycheLanguageException("Unknown atom {}".format(symbol))
-        if hints[symbol] != Probability:
-            raise TycheLanguageException("The variable of this class, {}, is not marked as a Probability".format(symbol))
+        if symbol in getattr(type(self), "_Tyche_atoms"):
+            return getattr(self, symbol)
 
-        return getattr(self, symbol)
+        raise TycheLanguageException("Unknown atom {}".format(symbol))
 
     def eval_role(self, symbol: str) -> RoleProbabilityDistribution:
-        return Role.eval_role_of(self, symbol)
+        if symbol in getattr(type(self), "_Tyche_roles"):
+            return getattr(self, symbol)()
+
+        raise TycheLanguageException("Unknown role {}".format(symbol))
 
 
 class Concept:

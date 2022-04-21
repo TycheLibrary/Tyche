@@ -119,6 +119,12 @@ class TestLanguage(unittest.TestCase):
         """
         Tests the evaluation of the probability of formulas.
         """
+        self.assertEqual({"x"}, Individual.get_atoms(TestIndividual))
+        self.assertEqual({"sub"}, Individual.get_roles(TestIndividual))
+
+        self.assertEqual({"y", "z"}, Individual.get_atoms(TestSubIndividual))
+        self.assertEqual(set(), Individual.get_roles(TestSubIndividual))
+
         individual = TestIndividual(0.5)
 
         x = Atom("x")
