@@ -16,6 +16,7 @@ class TestIndividual(Individual):
     x: Probability
     sub1: TestSubIndividual
     sub2: TestSubIndividual
+    sub1Ratio: float = 0.4
 
     def __init__(self, x: Probability):
         super().__init__()
@@ -26,8 +27,8 @@ class TestIndividual(Individual):
     @Role
     def sub(self):
         dist = RoleProbabilityDistribution()
-        dist.add(self.sub1, 0.4)
-        dist.add(self.sub2, 0.6)
+        dist.add(self.sub1, self.sub1Ratio)
+        dist.add(self.sub2, 1 - self.sub1Ratio)
         return dist
 
 
@@ -92,7 +93,7 @@ class TestLanguage(unittest.TestCase):
         self.assertEqual("((a \u2228 abc) \u2227 (b \u2227 \u00ACa))", str((a | abc) & (b & a.complement())))
         self.assertEqual("(\U0001D53C_X. abc)", str(Expectation("X", abc)))
 
-    def test_eval(self):
+    def test_individuals(self):
         """
         Tests the evaluation of the probability of formulas.
         """
@@ -107,5 +108,18 @@ class TestLanguage(unittest.TestCase):
         self.assertAlmostEqual(0.4 * 0.5 + 0.6 * 0.8, Expectation("sub", z).eval(individual))
         self.assertAlmostEqual(
             0.4 * (0.5 * 0.5) + 0.6 * (0.2 * 0.8),
+            Expectation("sub", y & z).eval(individual)
+        )
+
+        # Test the mutability of the model.
+        individual.x = 0.4
+        individual.sub1Ratio = 0.1
+        individual.sub2.z = 1
+
+        self.assertAlmostEqual(0.4, x.eval(individual))
+        self.assertAlmostEqual(0.1 * 0.5 + 0.9 * 0.2, Expectation("sub", y).eval(individual))
+        self.assertAlmostEqual(0.1 * 0.5 + 0.9 * 1, Expectation("sub", z).eval(individual))
+        self.assertAlmostEqual(
+            0.1 * (0.5 * 0.5) + 0.9 * (0.2 * 1),
             Expectation("sub", y & z).eval(individual)
         )
