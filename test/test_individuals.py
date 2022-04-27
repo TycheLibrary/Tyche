@@ -19,6 +19,7 @@ class TestSubIndividual(Individual):
 
 class TestIndividual(Individual):
     x: TycheConcept
+    role_to_sub1: TycheRole
     sub1: TestSubIndividual
     sub2: TestSubIndividual
     sub1Ratio: float = 0.4
@@ -28,6 +29,8 @@ class TestIndividual(Individual):
         self.x = x
         self.sub1 = TestSubIndividual(0.5, 0.5)
         self.sub2 = TestSubIndividual(0.2, 0.8)
+        self.role_to_sub1 = RoleDistribution()
+        self.role_to_sub1.add(self.sub1)
 
     @role
     def sub(self) -> RoleDistribution:
@@ -52,7 +55,7 @@ class TestIndividuals(unittest.TestCase):
         Tests the evaluation of the probability of formulas.
         """
         self.assertEqual({"x"}, Individual.get_concept_names(TestIndividual))
-        self.assertEqual({"sub"}, Individual.get_role_names(TestIndividual))
+        self.assertEqual({"sub", "role_to_sub1"}, Individual.get_role_names(TestIndividual))
 
         self.assertEqual({"y", "z"}, Individual.get_concept_names(TestSubIndividual))
         self.assertEqual(set(), Individual.get_role_names(TestSubIndividual))
@@ -62,15 +65,26 @@ class TestIndividuals(unittest.TestCase):
         x = Atom("x")
         y = Atom("y")
         z = Atom("z")
+        sub = Role("sub")
 
         self.assertEqual(1, always.eval(individual))
         self.assertEqual(0, never.eval(individual))
         self.assertAlmostEqual(0.5, x.eval(individual))
+        self.assertAlmostEqual(0.4 * 0.5 + 0.6 * 0.2, Expectation("sub", "y").eval(individual))
+        self.assertAlmostEqual(0.4 * 0.5 + 0.6 * 0.8, Expectation("sub", "z").eval(individual))
+        self.assertAlmostEqual(0.4 * 0.5 + 0.6 * 0.2, Expectation(sub, y).eval(individual))
+        self.assertAlmostEqual(0.4 * 0.5 + 0.6 * 0.8, Expectation(sub, z).eval(individual))
         self.assertAlmostEqual(0.4 * 0.5 + 0.6 * 0.2, Expectation("sub", y).eval(individual))
-        self.assertAlmostEqual(0.4 * 0.5 + 0.6 * 0.8, Expectation("sub", z).eval(individual))
+        self.assertAlmostEqual(0.4 * 0.5 + 0.6 * 0.8, Expectation(sub, "z").eval(individual))
         self.assertAlmostEqual(
             0.4 * (0.5 * 0.5) + 0.6 * (0.2 * 0.8),
             Expectation("sub", y & z).eval(individual)
+        )
+
+        sub_test_concept = y | z
+        self.assertAlmostEqual(
+            sub_test_concept.eval(individual.sub1),
+            Expectation("role_to_sub1", sub_test_concept).eval(individual)
         )
 
         # Test the mutability of the model.
@@ -79,8 +93,12 @@ class TestIndividuals(unittest.TestCase):
         individual.sub2.z = 1
 
         self.assertAlmostEqual(0.4, x.eval(individual))
+        self.assertAlmostEqual(0.1 * 0.5 + 0.9 * 0.2, Expectation("sub", "y").eval(individual))
+        self.assertAlmostEqual(0.1 * 0.5 + 0.9 * 1, Expectation("sub", "z").eval(individual))
+        self.assertAlmostEqual(0.1 * 0.5 + 0.9 * 0.2, Expectation(sub, y).eval(individual))
+        self.assertAlmostEqual(0.1 * 0.5 + 0.9 * 1, Expectation(sub, z).eval(individual))
         self.assertAlmostEqual(0.1 * 0.5 + 0.9 * 0.2, Expectation("sub", y).eval(individual))
-        self.assertAlmostEqual(0.1 * 0.5 + 0.9 * 1, Expectation("sub", z).eval(individual))
+        self.assertAlmostEqual(0.1 * 0.5 + 0.9 * 1, Expectation(sub, "z").eval(individual))
         self.assertAlmostEqual(
             0.1 * (0.5 * 0.5) + 0.9 * (0.2 * 1),
             Expectation("sub", y & z).eval(individual)

@@ -117,10 +117,11 @@ class EmptyContext(TycheContext):
         raise TycheLanguageException("Unknown role {}".format(symbol))
 
 
-# This is used to allow passing atom names (e.g. "x", "y", etc...)
-# directly to functions that require a concept. These atom names
-# will then automatically be converted to an Atom object.
+# This is used to allow passing names (e.g. "x", "y", etc...) directly
+# to functions that require a concept or role. These names will then
+# automatically be converted to an Atom or Role object.
 CompatibleWithConcept: type = TypeVar("CompatibleWithConcept", 'Concept', str)
+CompatibleWithRole: type = TypeVar("CompatibleWithRole", 'Role', str)
 
 
 class Concept:
@@ -245,7 +246,7 @@ class Concept:
     Other inline operators to define:
     concept.for(role)
     concept.for(role).given(margin)
-    concpet.necessary_for(role)
+    concept.necessary_for(role)
     concept.possible_for(role)
     others...
     '''
@@ -253,17 +254,16 @@ class Concept:
 
 class Atom(Concept):
     """
-    This class is used to represent indivisible concepts such
-    as always, never, or other named concepts.
+    Represents indivisible concepts such as always, never, constants, and named concepts.
     """
-    def __init__(self, symbol, *, special_symbol=False):
+    def __init__(self, symbol: str, *, special_symbol: bool = False, symbol_type_name: str = "Atom"):
         if not special_symbol:
-            Atom.check_atom_symbol(symbol)
+            Atom.check_symbol(symbol, symbol_type_name=type(self).__name__)
 
         self.symbol = symbol
 
     @staticmethod
-    def check_atom_symbol(symbol: str, *, context=None):
+    def check_symbol(symbol: str, *, symbol_name="symbol", symbol_type_name: str = "Atom", context: str = None):
         """
         Checks a string contains only alphanumeric characters or underscore.
         Raises an error if the symbol is an invalid atom symbol.
@@ -271,20 +271,22 @@ class Atom(Concept):
         context_suffix = "" if context is None else ". Errored in {}".format(context)
 
         if symbol is None:
-            raise ValueError("Atom symbols cannot be None{}".format(context_suffix))
+            raise ValueError("{} symbols cannot be None{}".format(symbol_type_name, context_suffix))
         if len(symbol) == 0:
-            raise ValueError("Atom symbols cannot be empty strings{}".format(context_suffix))
+            raise ValueError("{} symbols cannot be empty strings{}".format(symbol_type_name, context_suffix))
 
-        context_suffix = ". Errored for symbol '{}'{}".format(
-            symbol, "" if context is None else " in {}".format(symbol, context)
+        context_suffix = ". Errored for {} '{}'{}".format(
+            symbol_name, symbol, "" if context is None else " in {}".format(context)
         )
         if not symbol[0].islower():
-            raise ValueError("Atom symbols must start with a lowercase letter{}".format(context_suffix))
+            raise ValueError("{} symbols must start with a lowercase letter{}".format(
+                symbol_type_name, context_suffix
+            ))
 
         for ch in symbol[1:]:
             if ch != '_' and not ch.isalnum:
-                raise ValueError("Atom symbols can only contain alpha-numeric or underscore characters{}".format(
-                    context_suffix
+                raise ValueError("{} symbols can only contain alpha-numeric or underscore characters{}".format(
+                    symbol_type_name, context_suffix
                 ))
 
     def __str__(self):
@@ -319,10 +321,41 @@ class Atom(Concept):
         raise TycheLanguageException("is_weaker is unimplemented for " + type(self).__name__)
 
 
+class Role:
+    """
+    Represents the relationships between contexts.
+    """
+    def __init__(self, symbol: str, *, special_symbol: bool = False):
+        if not special_symbol:
+            Atom.check_symbol(symbol, symbol_type_name=type(self).__name__)
+
+        self.symbol = symbol
+
+    @staticmethod
+    def cast(role: CompatibleWithRole) -> 'Role':
+        if isinstance(role, Role):
+            return role
+        elif isinstance(role, str):
+            return Role(role)
+        else:
+            raise TycheLanguageException("Incompatible role type {}".format(type(role).__name__))
+
+    def __str__(self):
+        return self.symbol
+
+    def __repr__(self):
+        return "{}(symbol={})".format(type(self).__name__, self.symbol)
+
+    def __eq__(self, other) -> bool:
+        return type(self) == type(other) and self.symbol == cast('Atom', other).symbol
+
+    def eval(self, context: TycheContext) -> RoleDistribution:
+        return context.eval_role(self.symbol)
+
+
 class Constant(Atom):
     """
-    A constant aleatoric probability, where each evaluation
-    of the constant is independent.
+    A constant named aleatoric probability.
     """
     def __init__(self, symbol: str, probability: float):
         super().__init__(symbol, special_symbol=True)
@@ -338,12 +371,12 @@ never: Final[Constant] = Constant("\u22A5", 0)
 
 class Conditional(Concept):
     """
-    Class for representing the aleatoric ternary construct (if-then-else).
+    Represents an aleatoric ternary construct (if-then-else).
     """
-    def __init__(self, condition, if_yes, if_no):
-        self.condition = condition
-        self.if_yes = if_yes
-        self.if_no = if_no
+    def __init__(self, condition: CompatibleWithConcept, if_yes: CompatibleWithConcept, if_no: CompatibleWithConcept):
+        self.condition = Concept.cast(condition)
+        self.if_yes = Concept.cast(if_yes)
+        self.if_no = Concept.cast(if_no)
 
     def __str__(self):
         # Shorthand representations.
@@ -397,9 +430,9 @@ class Conditional(Concept):
 
 class ConditionalWithoutElse(Conditional):
     """
-    A conditional that represents the ternary (condition ? if_yes : Always).
+    Represents an aleatoric ternary construct of the form (condition ? if_yes : Always).
     """
-    def __init__(self, condition: Concept, if_yes: Concept):
+    def __init__(self, condition: CompatibleWithConcept, if_yes: CompatibleWithConcept):
         super().__init__(condition, if_yes, always)
 
     def otherwise(self, if_no: Concept) -> Conditional:
@@ -408,11 +441,11 @@ class ConditionalWithoutElse(Conditional):
 
 class Expectation(Concept):
     """
-    class for representing the aleatoric expectation construct in the language
+    Represents the aleatoric expectation construct.
     """
-    def __init__(self, role: str, concept: Concept):
-        self.role: str = role
-        self.concept: Concept = concept
+    def __init__(self, role: CompatibleWithRole, concept: CompatibleWithConcept):
+        self.role: Role = Role.cast(role)
+        self.concept: Concept = Concept.cast(concept)
 
     def __str__(self):
         return "(\U0001D53C_{}. {})".format(self.role, str(self.concept))
@@ -425,8 +458,7 @@ class Expectation(Concept):
             return False
 
         other: 'Expectation' = cast('Expectation', obj)
-        return (self.role == other.role and
-                self.concept == other.concept)
+        return self.role == other.role and self.concept == other.concept
 
     def __lt__(self, other):
         raise TycheLanguageException("not yet implemented")
@@ -437,7 +469,7 @@ class Expectation(Concept):
         from the given context to other contexts.
         """
         total_prob = 0.0
-        for other_context, prob in context.eval_role(self.role):
+        for other_context, prob in self.role.eval(context):
             total_prob += prob * self.concept.eval(other_context)
         return total_prob
 

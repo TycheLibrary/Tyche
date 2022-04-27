@@ -62,17 +62,21 @@ class TycheAccessorStore:
                             type_name, symbol, obj_type.__name__
                         ))
 
+        # Check that there are no duplicate names.
         intersection = variables.intersection(functions)
         if len(intersection) > 0:
             raise TycheIndividualsException("The symbol {} cannot be provided as both a variable and a function".format(
                 list(intersection)[0]
             ))
 
-        # Check that all the symbol names are valid
-        all_names = functions.union(variables)
-        for name in all_names:
-            Atom.check_atom_symbol(name, context="type {}".format(obj_type.__name__))
+        # Check that all the symbol names are valid.
+        for symbol_name, name_set in [("variable", variables), ("method", functions)]:
+            symbol_type_name = type_name.capitalize()
+            context = "type {}".format(obj_type.__name__)
+            for name in name_set:
+                Atom.check_symbol(name, symbol_name=symbol_name, symbol_type_name=symbol_type_name, context=context)
 
+        # Store the accessors in the type object.
         accessors = TycheAccessorStore(type_name, variables, functions)
         setattr(obj_type, accessors_key, accessors)
         return accessors

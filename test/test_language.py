@@ -60,7 +60,7 @@ class TestLanguage(unittest.TestCase):
         self.assertEqual("(a \u2227 b)", str(a & b))
         self.assertEqual("(b \u2228 a)", str(b | a))
         self.assertEqual("((a \u2228 abc) \u2227 (b \u2227 \u00ACa))", str((a | abc) & (b & a.complement())))
-        self.assertEqual("(\U0001D53C_X. abc)", str(Expectation("X", abc)))
+        self.assertEqual("(\U0001D53C_x. abc)", str(Expectation("x", abc)))
 
     def test_eval_constants(self):
         """
