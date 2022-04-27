@@ -2,36 +2,6 @@ import unittest
 from tyche.language import *
 
 
-class TestSubIndividual(Individual):
-    y: Probability
-    z: Probability
-
-    def __init__(self, y: Probability, z: Probability):
-        super().__init__()
-        self.y = y
-        self.z = z
-
-
-class TestIndividual(Individual):
-    x: Probability
-    sub1: TestSubIndividual
-    sub2: TestSubIndividual
-    sub1Ratio: float = 0.4
-
-    def __init__(self, x: Probability):
-        super().__init__()
-        self.x = x
-        self.sub1 = TestSubIndividual(0.5, 0.5)
-        self.sub2 = TestSubIndividual(0.2, 0.8)
-
-    @Role
-    def sub(self):
-        dist = RoleDistribution()
-        dist.add(self.sub1, self.sub1Ratio)
-        dist.add(self.sub2, 1 - self.sub1Ratio)
-        return dist
-
-
 class TestLanguage(unittest.TestCase):
     def setUp(self):
         self.x = Atom('my_X')
@@ -46,7 +16,6 @@ class TestLanguage(unittest.TestCase):
         """
         Tests equality checking of formulas.
         """
-
         # Constants
         self.assertEqual(always, always)
         self.assertNotEqual(always, never)
@@ -113,43 +82,4 @@ class TestLanguage(unittest.TestCase):
         self.assertAlmostEqual(
             1 - ((1 - 0.5 * 0.5) * (1 - 1 * 0.5)),
             ((flip & flip) | (always & flip)).eval(context)
-        )
-
-    def test_individuals(self):
-        """
-        Tests the evaluation of the probability of formulas.
-        """
-        self.assertEqual({"x"}, Individual.get_atoms(TestIndividual))
-        self.assertEqual({"sub"}, Individual.get_roles(TestIndividual))
-
-        self.assertEqual({"y", "z"}, Individual.get_atoms(TestSubIndividual))
-        self.assertEqual(set(), Individual.get_roles(TestSubIndividual))
-
-        individual = TestIndividual(0.5)
-
-        x = Atom("x")
-        y = Atom("y")
-        z = Atom("z")
-
-        self.assertEqual(1, always.eval(individual))
-        self.assertEqual(0, never.eval(individual))
-        self.assertAlmostEqual(0.5, x.eval(individual))
-        self.assertAlmostEqual(0.4 * 0.5 + 0.6 * 0.2, Expectation("sub", y).eval(individual))
-        self.assertAlmostEqual(0.4 * 0.5 + 0.6 * 0.8, Expectation("sub", z).eval(individual))
-        self.assertAlmostEqual(
-            0.4 * (0.5 * 0.5) + 0.6 * (0.2 * 0.8),
-            Expectation("sub", y & z).eval(individual)
-        )
-
-        # Test the mutability of the model.
-        individual.x = 0.4
-        individual.sub1Ratio = 0.1
-        individual.sub2.z = 1
-
-        self.assertAlmostEqual(0.4, x.eval(individual))
-        self.assertAlmostEqual(0.1 * 0.5 + 0.9 * 0.2, Expectation("sub", y).eval(individual))
-        self.assertAlmostEqual(0.1 * 0.5 + 0.9 * 1, Expectation("sub", z).eval(individual))
-        self.assertAlmostEqual(
-            0.1 * (0.5 * 0.5) + 0.9 * (0.2 * 1),
-            Expectation("sub", y & z).eval(individual)
         )

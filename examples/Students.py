@@ -6,7 +6,7 @@ and likely project supervisor.
 import tyche.language as language
 import tyche.model as model
 import tyche.logic as logic
-from language.adl import * #....etc 
+from language.adl import * #....etc
 
 class Person(Individual):
 
@@ -20,7 +20,7 @@ class Person(Individual):
         return self.age.greater_than(17)
 
 class Student(Person):
-     
+
     def __init__(self, name=None, gender=None, age=None, gpa=50):
         super(self)
         self.gpa = NormalDist(50,10)
@@ -52,7 +52,7 @@ class Student(Person):
     def _WWCC(self):
         '''juvenile students can only be supervised by people with a WWCC'''
         return (Conditional(Concept('adult'), Yes, Expect('supervisor',Concept('wwcc'))), Yes)
-            
+
 
 class Supervisor(Person):
 
@@ -85,8 +85,6 @@ bb.add(clare)
 bb.add(natasha)
 bb.prob(clare, adult.when(supervisor.is_not(concept('wwcc')))) #returns probability
 hd = Concept('score_above<80>')
-bb.observes(clare, hd) #we observe clare has an hd, and update our prior assumption on gpa based on this 
+bb.observes(clare, hd) #we observe clare has an hd, and update our prior assumption on gpa based on this
 bb.prob(clare, hd)
 bb.updates(clare, hd) #present tense imperative??
-
-

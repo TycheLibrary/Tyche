@@ -99,8 +99,8 @@ class TycheContext:
     Each individual may supply their own context for
     their variables and roles.
     """
-    def eval_atom(self, symbol: str) -> float:
-        raise TycheLanguageException("eval_atom is unimplemented for " + type(self).__name__)
+    def eval_concept(self, symbol: str) -> float:
+        raise TycheLanguageException("eval_concept is unimplemented for " + type(self).__name__)
 
     def eval_role(self, symbol: str) -> RoleDistribution:
         raise TycheLanguageException("eval_role is unimplemented for " + type(self).__name__)
@@ -110,95 +110,32 @@ class EmptyContext(TycheContext):
     """
     Provides an empty context for evaluating constant expressions.
     """
-    def eval_atom(self, symbol: str) -> float:
+    def eval_concept(self, symbol: str) -> float:
         raise TycheLanguageException("Unknown atom {}".format(symbol))
 
     def eval_role(self, symbol: str) -> RoleDistribution:
         raise TycheLanguageException("Unknown role {}".format(symbol))
 
 
-# Marks instance variables of classes as probabilities that
-# may be accessed by Tyche formulas.
-Probability = TypeVar("Probability", float, int)
-
-
-class Role:
-    """
-    Marks instance methods of classes as roles
-    that may be accessed by Tyche formulas.
-    """
-    def __init__(self, fn: Callable[[], RoleDistribution]):
-        self.fn = fn
-
-    def __set_name__(self, owner, name):
-        if not hasattr(owner, "_Tyche_roles"):
-            setattr(owner, "_Tyche_roles", set())
-
-        getattr(owner, "_Tyche_roles").add(name)
-        setattr(owner, name, self.fn)
-
-
-class Individual(TycheContext):
-    """
-    A helper class for representing individual entities in an aleatoric
-    knowledge base. The variables about the individual are stored as
-    instance variables with the type hint Probability. Roles relating
-    individuals are stored as methods that are annotated with @Role.
-    These individuals can then be used as a context to evaluate Tyche formulas.
-    """
-    def __init__(self):
-        super().__init__()
-        Individual._populate_available_atoms(type(self))
-        Individual._populate_available_roles(type(self))
-
-    @staticmethod
-    def get_atoms(cls: Type['Individual']) -> set[str]:
-        return Individual._populate_available_atoms(cls)
-
-    @staticmethod
-    def get_roles(cls: Type['Individual']) -> set[str]:
-        return Individual._populate_available_roles(cls)
-
-    @staticmethod
-    def _populate_available_atoms(cls):
-        if hasattr(cls, "_Tyche_atoms"):
-            return getattr(cls, "_Tyche_atoms")
-
-        atoms = set()
-        for symbol, type_hint in get_type_hints(cls).items():
-            if type_hint == Probability:
-                atoms.add(symbol)
-
-        setattr(cls, "_Tyche_atoms", atoms)
-        return atoms
-
-    @staticmethod
-    def _populate_available_roles(cls):
-        if hasattr(cls, "_Tyche_roles"):
-            return getattr(cls, "_Tyche_roles")
-
-        # If there were any roles, _Tyche_roles would have already been set.
-        roles = set()
-        setattr(cls, "_Tyche_roles", roles)
-        return roles
-
-    def eval_atom(self, symbol: str) -> float:
-        if symbol in getattr(type(self), "_Tyche_atoms"):
-            return getattr(self, symbol)
-
-        raise TycheLanguageException("Unknown atom {} for type {}".format(symbol, type(self).__name__))
-
-    def eval_role(self, symbol: str) -> RoleDistribution:
-        if symbol in getattr(type(self), "_Tyche_roles"):
-            return getattr(self, symbol)()
-
-        raise TycheLanguageException("Unknown role {} for type {}".format(symbol, type(self).__name__))
+# This is used to allow passing atom names (e.g. "x", "y", etc...)
+# directly to functions that require a concept. These atom names
+# will then automatically be converted to an Atom object.
+CompatibleWithConcept: type = TypeVar("CompatibleWithConcept", 'Concept', str)
 
 
 class Concept:
     """
     The base class of all nodes in aleatoric description logic formulas.
     """
+    @staticmethod
+    def cast(concept: CompatibleWithConcept) -> 'Concept':
+        if isinstance(concept, Concept):
+            return concept
+        elif isinstance(concept, str):
+            return Atom(concept)
+        else:
+            raise TycheLanguageException("Incompatible concept type {}".format(type(concept).__name__))
+
     def get_child_concepts(self) -> list['Concept']:
         """
         Returns the child concepts of this concept.
@@ -277,7 +214,7 @@ class Concept:
         """
         return concept.is_weaker(self)
 
-    def when(self, condition: 'Concept') -> 'ConditionalWithoutElse':
+    def when(self, condition: CompatibleWithConcept) -> 'ConditionalWithoutElse':
         """
         Returns a formula that represents (condition ? self : Always).
         This is equivalent to the formula self -> condition.
@@ -326,21 +263,29 @@ class Atom(Concept):
         self.symbol = symbol
 
     @staticmethod
-    def check_atom_symbol(symbol):
+    def check_atom_symbol(symbol: str, *, context=None):
         """
         Checks a string contains only alphanumeric characters or underscore.
         Raises an error if the symbol is an invalid atom symbol.
         """
+        context_suffix = "" if context is None else ". Errored in {}".format(context)
+
         if symbol is None:
-            raise ValueError("Symbol cannot be None")
+            raise ValueError("Atom symbols cannot be None{}".format(context_suffix))
         if len(symbol) == 0:
-            raise ValueError("Symbol cannot be an empty string")
+            raise ValueError("Atom symbols cannot be empty strings{}".format(context_suffix))
+
+        context_suffix = ". Errored for symbol '{}'{}".format(
+            symbol, "" if context is None else " in {}".format(symbol, context)
+        )
         if not symbol[0].islower():
-            raise ValueError("atom symbols must start with a lowercase letter")
+            raise ValueError("Atom symbols must start with a lowercase letter{}".format(context_suffix))
 
         for ch in symbol[1:]:
             if ch != '_' and not ch.isalnum:
-                raise ValueError("Symbol can only contain alpha-numeric or underscore characters")
+                raise ValueError("Atom symbols can only contain alpha-numeric or underscore characters{}".format(
+                    context_suffix
+                ))
 
     def __str__(self):
         return self.symbol
@@ -355,7 +300,7 @@ class Atom(Concept):
         raise TycheLanguageException("not yet implemented")
 
     def eval(self, context: TycheContext) -> float:
-        value = context.eval_atom(self.symbol)
+        value = context.eval_concept(self.symbol)
         if value < 0 or value > 1:
             raise TycheLanguageException(
                 "Evaluation of atom {} did not fall into the range [0, 1], instead was {}".format(
