@@ -19,7 +19,7 @@ class TestSubIndividual(Individual):
 
 class TestIndividual(Individual):
     x: TycheConcept
-    role_to_sub1: TycheRole
+    role_var: TycheRole
     sub1: TestSubIndividual
     sub2: TestSubIndividual
     sub1Ratio: float = 0.4
@@ -29,8 +29,8 @@ class TestIndividual(Individual):
         self.x = x
         self.sub1 = TestSubIndividual(0.5, 0.5)
         self.sub2 = TestSubIndividual(0.2, 0.8)
-        self.role_to_sub1 = RoleDistribution()
-        self.role_to_sub1.add(self.sub1)
+        self.role_var = RoleDistribution()
+        self.role_var.add(self.sub1)
 
     @role
     def sub(self) -> RoleDistribution:
@@ -55,11 +55,12 @@ class TestIndividuals(unittest.TestCase):
         Tests the evaluation of the probability of formulas.
         """
         self.assertEqual({"x"}, Individual.get_concept_names(TestIndividual))
-        self.assertEqual({"sub", "role_to_sub1"}, Individual.get_role_names(TestIndividual))
+        self.assertEqual({"sub", "role_var"}, Individual.get_role_names(TestIndividual))
 
         self.assertEqual({"y", "z"}, Individual.get_concept_names(TestSubIndividual))
         self.assertEqual(set(), Individual.get_role_names(TestSubIndividual))
 
+        # Create an individual to test with.
         individual = TestIndividual(0.5)
 
         x = Atom("x")
@@ -67,6 +68,7 @@ class TestIndividuals(unittest.TestCase):
         z = Atom("z")
         sub = Role("sub")
 
+        # Test evaluating some concepts for the individual.
         self.assertEqual(1, always.eval(individual))
         self.assertEqual(0, never.eval(individual))
         self.assertAlmostEqual(0.5, x.eval(individual))
@@ -81,10 +83,15 @@ class TestIndividuals(unittest.TestCase):
             Expectation("sub", y & z).eval(individual)
         )
 
-        sub_test_concept = y | z
+        # Test using a role variable.
+        sub_role_concept = Expectation("role_var", y | z)
+        self.assertAlmostEqual(1 - (1 - 0.5) * (1 - 0.5), sub_role_concept.eval(individual))
+
+        # Test modifying a role variable.
+        individual.role_var.add(individual.sub2)
         self.assertAlmostEqual(
-            sub_test_concept.eval(individual.sub1),
-            Expectation("role_to_sub1", sub_test_concept).eval(individual)
+            0.5 * (1 - (1 - 0.5) * (1 - 0.5)) + 0.5 * (1 - (1 - 0.2) * (1 - 0.8)),
+            sub_role_concept.eval(individual)
         )
 
         # Test the mutability of the model.
