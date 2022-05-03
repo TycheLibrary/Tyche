@@ -6,8 +6,12 @@ from typing import Union
 
 import numpy as np
 from scipy import stats
-from scipy.stats.distributions import rv_frozen
 from numpy.typing import ArrayLike
+
+
+# TODO :
+#   1) Create a TruncatedContinuousProbDist that can truncate arbitrary distributions.
+#   2) Test the distribution's own shift/scale against LinearTransformedContinuousProbDist directly
 
 
 ProbDistLike: type = Union[float, int, 'ProbabilityDistribution']
@@ -32,18 +36,6 @@ class ProbDist:
         """ Samples size random values from this distribution. """
         raise NotImplementedError("sample is unimplemented for " + type(self).__name__)
 
-    def cdf(self, x: ArrayLike) -> ArrayLike:
-        """ Evaluates the cumulative density function at x. """
-        raise NotImplementedError("cdf is unimplemented for " + type(self).__name__)
-
-    def pdf(self, x: ArrayLike) -> ArrayLike:
-        """ Evaluates the probability density function at x. """
-        raise NotImplementedError("pdf is unimplemented for " + type(self).__name__)
-
-    def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
-        """ Calculates the x-value that would produce the given probability using the cdf. """
-        raise NotImplementedError("inverse_cdf is unimplemented for " + type(self).__name__)
-
 
 class ContinuousProbDist(ProbDist):
     """
@@ -66,6 +58,21 @@ class ContinuousProbDist(ProbDist):
         prob = rng.uniform(0, np.nextafter(1.0, 1), shape)
         return self.inverse_cdf(prob)
 
+    def cdf(self, x: ArrayLike) -> ArrayLike:
+        """ Evaluates the cumulative density function at x. """
+        raise NotImplementedError("cdf is unimplemented for " + type(self).__name__)
+
+    def pdf(self, x: ArrayLike) -> ArrayLike:
+        """ Evaluates the probability density function at x. """
+        raise NotImplementedError("pdf is unimplemented for " + type(self).__name__)
+
+    def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
+        """
+        Calculates the x-value that would produce the given probability using
+        the cumulative density function of this probability distribution.
+        """
+        raise NotImplementedError("inverse_cdf is unimplemented for " + type(self).__name__)
+
     def __add__(self, other: ProbDistLike) -> 'ContinuousProbDist':
         """
         Adds the other scalar or probability distribution to this probability distribution.
@@ -83,6 +90,10 @@ class ContinuousProbDist(ProbDist):
         implemented generally for any pair of distributions (or at least, I don't know
         how to do that). However, implementing this for common pairs of distributions may
         be worth it if this functionality would be helpful.
+
+        Alternatively, monte-carlo methods can be used to estimate the addition of two
+        probability distributions, but it is not exact. Therefore, I think it should be
+        more explicitly chosen than overloading +.
         """
         raise NotImplementedError("Addition of distributions is not yet implemented")
 
@@ -219,44 +230,28 @@ class LinearTransformedContinuousProbDist(ContinuousProbDist):
         )
 
 
-class SciPyStatsContinuousProbDist(ContinuousProbDist):
-    """
-    Represents a continuous probability distribution that uses a scipy.stats
-    generator under-the-hood.
-    """
-    def __init__(self, generator: rv_frozen):
-        super().__init__()
-        self.generator = generator
-
-    def cdf(self, x: ArrayLike) -> ArrayLike:
-        """ Evaluates the cumulative density function at x. """
-        return self.generator.cdf(x)
-
-    def pdf(self, x: ArrayLike) -> ArrayLike:
-        """ Evaluates the probability density function at x. """
-        return self.generator.pdf(x)
-
-    def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
-        """ Calculates the x-value that would produce the given probability using the cdf. """
-        return self.generator.ppf(prob)
-
-
-class UniformDist(SciPyStatsContinuousProbDist):
+class UniformDist(ContinuousProbDist):
     """
     A uniform probability distribution.
     """
     def __init__(self, minimum: float, maximum: float):
-        super().__init__(UniformDist._gen_dist(minimum, maximum))
+        super().__init__()
+        if maximum <= minimum:
+            raise TycheDistributionsException("UniformDist maximum must be > than minimum. {} <= {}".format(
+                maximum, minimum
+            ))
+
         self.minimum = minimum
         self.maximum = maximum
 
-    @staticmethod
-    def _gen_dist(minimum: float, maximum: float) -> rv_frozen:
-        if maximum <= minimum:
-            raise TycheDistributionsException(
-                "UniformDist maximum must be > than minimum. {} <= {}".format(maximum, minimum)
-            )
-        return stats.uniform(loc=minimum, scale=maximum - minimum)
+    def cdf(self, x: ArrayLike) -> ArrayLike:
+        return stats.uniform.cdf(x, loc=self.minimum, scale=self.maximum - self.minimum)
+
+    def pdf(self, x: ArrayLike) -> ArrayLike:
+        return stats.uniform.pdf(x, loc=self.minimum, scale=self.maximum - self.minimum)
+
+    def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
+        return stats.uniform.ppf(prob, loc=self.minimum, scale=self.maximum - self.minimum)
 
     def _shift(self, shift: float) -> 'ContinuousProbDist':
         return UniformDist(self.minimum + shift, self.maximum + shift)
@@ -273,22 +268,26 @@ class UniformDist(SciPyStatsContinuousProbDist):
         return "UniformDist(min={}, max={})".format(self.minimum, self.maximum)
 
 
-class NormalDist(SciPyStatsContinuousProbDist):
+class NormalDist(ContinuousProbDist):
     """
     A normal probability distribution.
     """
     def __init__(self, mean: float, std_dev: float):
-        super().__init__(NormalDist._gen_dist(mean, std_dev))
+        super().__init__()
+        if std_dev <= 0:
+            raise TycheDistributionsException("NormalDist std_dev must be > than 0. {} <= 0".format(std_dev))
+
         self.mean = mean
         self.std_dev = std_dev
 
-    @staticmethod
-    def _gen_dist(mean: float, std_dev: float) -> rv_frozen:
-        if std_dev <= 0:
-            raise TycheDistributionsException(
-                "NormalDist std_dev must be > than 0. {} <= 0".format(std_dev)
-            )
-        return stats.norm(loc=mean, scale=std_dev)
+    def cdf(self, x: ArrayLike) -> ArrayLike:
+        return stats.norm.cdf(x, loc=self.mean, scale=self.std_dev)
+
+    def pdf(self, x: ArrayLike) -> ArrayLike:
+        return stats.norm.pdf(x, loc=self.mean, scale=self.std_dev)
+
+    def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
+        return stats.norm.ppf(prob, loc=self.mean, scale=self.std_dev)
 
     def _shift(self, shift: float) -> 'ContinuousProbDist':
         return NormalDist(self.mean + shift, self.std_dev)
@@ -306,31 +305,42 @@ class NormalDist(SciPyStatsContinuousProbDist):
         return "NormalDist(mean={}, std_dev={})".format(self.mean, self.std_dev)
 
 
-class TruncatedNormalDist(SciPyStatsContinuousProbDist):
+class TruncatedNormalDist(ContinuousProbDist):
     """
     A truncated normal probability distribution.
     """
     def __init__(self, mean: float, std_dev: float, minimum: float, maximum: float):
-        super().__init__(TruncatedNormalDist._gen_dist(mean, std_dev, minimum, maximum))
+        super().__init__()
+        if maximum <= minimum:
+            raise TycheDistributionsException("TruncatedNormalDist maximum must be > than minimum. {} <= {}".format(
+                maximum, minimum
+            ))
+        if std_dev <= 0:
+            raise TycheDistributionsException("TruncatedNormalDist std_dev must be > than 0. {} <= 0".format(std_dev))
+
         self.mean = mean
         self.std_dev = std_dev
         self.minimum = minimum
         self.maximum = maximum
 
-    @staticmethod
-    def _gen_dist(mean: float, std_dev: float, minimum: float, maximum: float) -> rv_frozen:
-        if maximum <= minimum:
-            raise TycheDistributionsException(
-                "TruncatedNormalDist maximum must be > than minimum. {} <= {}".format(maximum, minimum)
-            )
-        if std_dev <= 0:
-            raise TycheDistributionsException(
-                "TruncatedNormalDist std_dev must be > than 0. {} <= 0".format(std_dev)
-            )
+    @property
+    def min_z_index(self):
+        """ The z-index of the minimum of this truncated normal distribution. """
+        return (self.minimum - self.mean) / self.std_dev
 
-        clip_a = (minimum - mean) / std_dev
-        clip_b = (maximum - mean) / std_dev
-        return stats.truncnorm(clip_a, clip_b, loc=mean, scale=std_dev)
+    @property
+    def max_z_index(self):
+        """ The z-index of the maximum of this truncated normal distribution. """
+        return (self.maximum - self.mean) / self.std_dev
+
+    def cdf(self, x: ArrayLike) -> ArrayLike:
+        return stats.truncnorm.cdf(x, self.min_z_index, self.max_z_index, loc=self.mean, scale=self.std_dev)
+
+    def pdf(self, x: ArrayLike) -> ArrayLike:
+        return stats.truncnorm.pdf(x, self.min_z_index, self.max_z_index, loc=self.mean, scale=self.std_dev)
+
+    def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
+        return stats.truncnorm.ppf(prob, self.min_z_index, self.max_z_index, loc=self.mean, scale=self.std_dev)
 
     def _shift(self, shift: float) -> 'ContinuousProbDist':
         return TruncatedNormalDist(
@@ -341,11 +351,13 @@ class TruncatedNormalDist(SciPyStatsContinuousProbDist):
         )
 
     def _scale(self, scale: float) -> 'ContinuousProbDist':
+        bound1 = self.minimum * scale
+        bound2 = self.maximum * scale
         return TruncatedNormalDist(
             self.mean * scale,
             abs(self.std_dev * scale),  # Normal distributions are symmetrical
-            self.minimum * scale,
-            self.maximum * scale
+            min(bound1, bound2),
+            max(bound1, bound2)
         )
 
     def __str__(self):
