@@ -4,7 +4,7 @@ description logic (ADL) formulas.
 
 ADL is designed to support both mathematical notion and a formal english notion.
 """
-from typing import Final, cast, get_type_hints, TypeVar, Callable, Annotated, Type
+from typing import Final, cast, TypeVar, Optional
 
 
 class TycheLanguageException(Exception):
@@ -23,16 +23,23 @@ class RoleDistribution:
     of selecting an item is fixed at 100%.
     """
     def __init__(self):
-        self.entries: list[tuple['TycheContext', float]] = []
+        self.entries: list[tuple[Optional['TycheContext'], float]] = []
         self.total_weight = 0
 
-    def _index_of(self, individual: 'TycheContext'):
+    def clear(self):
+        """
+        Removes all individuals from this distribution.
+        """
+        self.entries = []
+        self.total_weight = 0
+
+    def _index_of(self, individual: Optional['TycheContext']):
         for index, (ctx, _) in enumerate(self.entries):
-            if ctx == individual:
+            if ctx is individual:
                 return index
         return None
 
-    def contains(self, individual: 'TycheContext'):
+    def contains(self, individual: Optional['TycheContext']):
         """
         Returns whether this role distribution contains the given individual.
         """
@@ -44,7 +51,7 @@ class RoleDistribution:
             total += weight
         self.total_weight = total
 
-    def add(self, individual: 'TycheContext', weight: float = 1):
+    def add(self, individual: Optional['TycheContext'], weight: float = 1):
         """
         Add an individual to this distribution with the given weighting.
         The weightings of individuals are relative to one another. If
@@ -54,7 +61,7 @@ class RoleDistribution:
         If no weight is supplied, then the default of 1 will be used.
         """
         if weight <= 0:
-            raise TycheLanguageException("Value weights must be positive, not {:.3f}".format(weight))
+            raise TycheLanguageException("Value weights must be positive, not {}".format(weight))
 
         entry = (individual, weight)
 
@@ -66,7 +73,7 @@ class RoleDistribution:
 
         self._update_total_weight()
 
-    def remove(self, individual: 'TycheContext'):
+    def remove(self, individual: Optional['TycheContext']):
         """
         Removes the given individual from this distribution.
         """
@@ -79,14 +86,16 @@ class RoleDistribution:
 
     def __iter__(self):
         """
-        Yields tuples of TycheContext objects and their associated
+        Yields tuples of TycheContext objects or None, and their associated
         probabilities. The sum of all returned probabilities should
         sum to 1, although there may be some deviance from this due
         to floating point error.
         """
         total_weight = self.total_weight
         if total_weight == 0:
-            raise TycheLanguageException("This {} is empty".format(type(self).__name__))
+            # If there are no entries, then yield the None entry with probability 1.
+            yield None, 1
+            return
 
         for context, weight in self.entries:
             yield context, weight / total_weight
@@ -466,12 +475,25 @@ class Expectation(Concept):
     def eval(self, context: TycheContext):
         """
         Evaluates the concept for all members of the role mapping
-        from the given context to other contexts.
+        from the given context to other contexts. This evaluation
+        contains an implicit given that the role is non-None.
+        If the role only contains None, then this will evaluate
+        to vacuously True.
         """
         total_prob = 0.0
+        prob_weight = 1.0
         for other_context, prob in self.role.eval(context):
-            total_prob += prob * self.concept.eval(other_context)
-        return total_prob
+            if other_context is None:
+                prob_weight = 1.0 - prob
+            else:
+                total_prob += prob * self.concept.eval(other_context)
+
+        # Vacuous True if only None in role.
+        if prob_weight == 0:
+            return 1
+
+        # Division for the implicit given non-None.
+        return total_prob / prob_weight
 
     def normal_form(self):
         """

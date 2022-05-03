@@ -50,6 +50,44 @@ class TestIndividuals(unittest.TestCase):
     def tearDown(self):
         pass
 
+    def test_expectation(self):
+        """
+        Tests the marginal expectation operator.
+        """
+        individual = TestIndividual(0.5)
+        individual.sub1.z = 0
+        individual.sub2.z = 1
+
+        individual.role_var.clear()
+
+        # Vacuously true when the role is empty.
+        self.assertAlmostEqual(1, Expectation("role_var", "z").eval(individual))
+        individual.role_var.add(None, 1)
+        self.assertAlmostEqual(1, Expectation("role_var", "z").eval(individual))
+
+        # Expectations should apply an implicit 'given non-None'
+        individual.role_var.add(individual.sub1, 1)
+        self.assertAlmostEqual(0, Expectation("role_var", "z").eval(individual))
+        individual.role_var.add(individual.sub2, 1)
+        self.assertAlmostEqual(0.5, Expectation("role_var", "z").eval(individual))
+
+        # Individuals should override their own weight when added twice.
+        individual.role_var.add(individual.sub2, 3)
+        self.assertAlmostEqual(0.75, Expectation("role_var", "z").eval(individual))
+
+        # Removing the None-individual should not affect the expectation.
+        individual.role_var.remove(None)
+        self.assertAlmostEqual(0.75, Expectation("role_var", "z").eval(individual))
+
+        # Removing the individuals should affect the expectation.
+        individual.role_var.remove(individual.sub1)
+        self.assertAlmostEqual(1, Expectation("role_var", "z").eval(individual))
+        individual.role_var.add(individual.sub1, 1)
+        individual.role_var.remove(individual.sub2)
+        self.assertAlmostEqual(0, Expectation("role_var", "z").eval(individual))
+        individual.role_var.remove(individual.sub1)
+        self.assertAlmostEqual(1, Expectation("role_var", "z").eval(individual))
+
     def test_individuals(self):
         """
         Tests the evaluation of the probability of formulas.
