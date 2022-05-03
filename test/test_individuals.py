@@ -29,12 +29,12 @@ class TestIndividual(Individual):
         self.x = x
         self.sub1 = TestSubIndividual(0.5, 0.5)
         self.sub2 = TestSubIndividual(0.2, 0.8)
-        self.role_var = RoleDistribution()
+        self.role_var = WeightedRoleDistribution()
         self.role_var.add(self.sub1)
 
     @role
-    def sub(self) -> RoleDistribution:
-        dist = RoleDistribution()
+    def sub(self) -> WeightedRoleDistribution:
+        dist = WeightedRoleDistribution()
         dist.add(self.sub1, self.sub1Ratio)
         dist.add(self.sub2, 1 - self.sub1Ratio)
         return dist

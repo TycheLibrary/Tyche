@@ -2,20 +2,20 @@
 Provides convenience classes for setting up a model using classes.
 """
 from typing import TypeVar, Callable, get_type_hints, Final, Type
-from tyche.language import RoleDistribution, TycheLanguageException, TycheContext, Atom
+from tyche.language import WeightedRoleDistribution, TycheLanguageException, TycheContext, Atom
 
 
 # Marks instance variables of classes as probabilities that
 # may be accessed by Tyche formulas.
 TycheConcept = TypeVar("TycheConcept", float, int)
-TycheRole = TypeVar("TycheRole", bound=RoleDistribution)
+TycheRole = TypeVar("TycheRole", bound=WeightedRoleDistribution)
 
 
 class TycheIndividualsException(Exception):
     """
     Class for detailing exceptions with individuals.
     """
-    def __init__(self, message):
+    def __init__(self, message: str):
         self.message = "TycheIndividualsException: " + message
 
 
@@ -84,7 +84,7 @@ class TycheAccessorStore:
 
 class IndividualPropertyDecorator:
     """ A decorator to mark methods as providing the value of a concept or role. """
-    def __init__(self, functions_key: str, fn: Callable[[], RoleDistribution]):
+    def __init__(self, functions_key: str, fn: Callable[[], WeightedRoleDistribution]):
         self.functions_key = functions_key
         self.fn = fn
 
@@ -107,7 +107,7 @@ class concept(IndividualPropertyDecorator):
     functions_key: Final[str] = "_Tyche_concept_functions"
     var_type_hint: Final[type] = TycheConcept
 
-    def __init__(self, fn: Callable[[], RoleDistribution]):
+    def __init__(self, fn: Callable[[], WeightedRoleDistribution]):
         super().__init__(concept.functions_key, fn)
 
     @staticmethod
@@ -127,7 +127,7 @@ class role(IndividualPropertyDecorator):
     functions_key: Final[str] = "_Tyche_role_functions"
     var_type_hint: Final[type] = TycheRole
 
-    def __init__(self, fn: Callable[[], RoleDistribution]):
+    def __init__(self, fn: Callable[[], WeightedRoleDistribution]):
         super().__init__(role.functions_key, fn)
 
     @staticmethod
@@ -169,5 +169,5 @@ class Individual(TycheContext):
     def eval_concept(self, symbol: str) -> float:
         return self.concepts.get(self, symbol)
 
-    def eval_role(self, symbol: str) -> RoleDistribution:
+    def eval_role(self, symbol: str) -> WeightedRoleDistribution:
         return self.roles.get(self, symbol)

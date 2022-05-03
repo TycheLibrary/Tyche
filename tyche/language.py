@@ -11,11 +11,11 @@ class TycheLanguageException(Exception):
     """
     Class for detailing language exceptions.
     """
-    def __init__(self, message):
+    def __init__(self, message: str):
         self.message = "TycheLanguageException: " + message
 
 
-class RoleDistribution:
+class WeightedRoleDistribution:
     """
     Represents a probability distribution of contexts for a role.
     The items in the probability distribution use weights to
@@ -109,10 +109,10 @@ class TycheContext:
     their variables and roles.
     """
     def eval_concept(self, symbol: str) -> float:
-        raise TycheLanguageException("eval_concept is unimplemented for " + type(self).__name__)
+        raise NotImplementedError("eval_concept is unimplemented for " + type(self).__name__)
 
-    def eval_role(self, symbol: str) -> RoleDistribution:
-        raise TycheLanguageException("eval_role is unimplemented for " + type(self).__name__)
+    def eval_role(self, symbol: str) -> WeightedRoleDistribution:
+        raise NotImplementedError("eval_role is unimplemented for " + type(self).__name__)
 
 
 class EmptyContext(TycheContext):
@@ -122,7 +122,7 @@ class EmptyContext(TycheContext):
     def eval_concept(self, symbol: str) -> float:
         raise TycheLanguageException("Unknown atom {}".format(symbol))
 
-    def eval_role(self, symbol: str) -> RoleDistribution:
+    def eval_role(self, symbol: str) -> WeightedRoleDistribution:
         raise TycheLanguageException("Unknown role {}".format(symbol))
 
 
@@ -150,20 +150,20 @@ class Concept:
         """
         Returns the child concepts of this concept.
         """
-        raise TycheLanguageException("get_child_concepts is unimplemented for " + type(self).__name__)
+        raise NotImplementedError("get_child_concepts is unimplemented for " + type(self).__name__)
 
     def __str__(self) -> str:
         """
         gives a compact string representation of the structure of the formula
         in terms of primitive operators
         """
-        raise TycheLanguageException("__str__ is unimplemented for " + type(self).__name__)
+        raise NotImplementedError("__str__ is unimplemented for " + type(self).__name__)
 
     def __repr__(self) -> str:
         """
         gives the constructor string of the object
         """
-        raise TycheLanguageException("__repr__ is unimplemented for " + type(self).__name__)
+        raise NotImplementedError("__repr__ is unimplemented for " + type(self).__name__)
 
     # maybe also include a function for giving an optimised inline string representation of a formula.
 
@@ -171,13 +171,13 @@ class Concept:
         """
         return true if formulas are identical
         """
-        raise TycheLanguageException("__eq__ is unimplemented for " + type(self).__name__)
+        raise NotImplementedError("__eq__ is unimplemented for " + type(self).__name__)
 
     def __lt__(self, other: 'Concept') -> bool:
         """
         establishes a syntactic ordering over formula
         """
-        raise TycheLanguageException("__lt__ is unimplemented for " + type(self).__name__)
+        raise NotImplementedError("__lt__ is unimplemented for " + type(self).__name__)
 
     def eval(self, context: TycheContext) -> float:
         """
@@ -188,13 +188,13 @@ class Concept:
         and roles is a function that maps role symbols
         to probability distributions of tuples of concept functions and role functions
         """
-        raise TycheLanguageException("eval is unimplemented for " + type(self).__name__)
+        raise NotImplementedError("eval is unimplemented for " + type(self).__name__)
 
     def normal_form(self) -> 'Concept':
         """
         Returns the tree normal form of the formula, where atoms are ordered alphabetically.
         """
-        raise TycheLanguageException("normal_form is unimplemented for " + type(self).__name__)
+        raise NotImplementedError("normal_form is unimplemented for " + type(self).__name__)
 
     def is_equivalent(self, concept: 'Concept') -> bool:
         """
@@ -327,7 +327,7 @@ class Atom(Concept):
         return self == concept
 
     def is_weaker(self, concept):
-        raise TycheLanguageException("is_weaker is unimplemented for " + type(self).__name__)
+        raise NotImplementedError("is_weaker is unimplemented for " + type(self).__name__)
 
 
 class Role:
@@ -358,7 +358,7 @@ class Role:
     def __eq__(self, other) -> bool:
         return type(self) == type(other) and self.symbol == cast('Atom', other).symbol
 
-    def eval(self, context: TycheContext) -> RoleDistribution:
+    def eval(self, context: TycheContext) -> WeightedRoleDistribution:
         return context.eval_role(self.symbol)
 
 
