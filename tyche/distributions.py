@@ -52,6 +52,12 @@ class ContinuousProbDist(ProbDist):
     def __init__(self):
         super().__init__()
 
+    def _shift(self, shift: float) -> 'ContinuousProbDist':
+        return LinearTransformedContinuousProbDist(self, shift, 1)
+
+    def _scale(self, scale: float) -> 'ContinuousProbDist':
+        return LinearTransformedContinuousProbDist(self, 0, scale)
+
     def sample(self, rng: np.random.Generator, shape: Union[int, tuple, None] = None) -> float:
         """
         Samples a random value from this distribution.
@@ -60,55 +66,53 @@ class ContinuousProbDist(ProbDist):
         prob = rng.uniform(0, np.nextafter(1.0, 1), shape)
         return self.inverse_cdf(prob)
 
-    def __add__(self, other: ProbDistLike) -> ProbDistLike:
+    def __add__(self, other: ProbDistLike) -> 'ContinuousProbDist':
         """
         Adds the other scalar or probability distribution to this probability distribution.
         """
         # Scalar additions such as UniformDist(0, 1) < 0.1
         if np.isscalar(other):
-            other = float(other)
-            return LinearTransformedContinuousProbDist(self, other, 1)
+            return self._shift(float(other))
 
         # Distribution additions such as UniformDist(0, 1) + UniformDist(0.5, 1)
         raise NotImplementedError("Addition of distributions is not yet implemented")
 
-    def __radd__(self, other: ProbDistLike) -> ProbDistLike:
+    def __radd__(self, other: ProbDistLike) -> 'ContinuousProbDist':
         return self + other  # Add is commutative
 
-    def __mul__(self, other: ProbDistLike) -> ProbDistLike:
+    def __mul__(self, other: ProbDistLike) -> 'ContinuousProbDist':
         """
         Adds the other scalar or probability distribution to this probability distribution.
         """
         # Scalar additions such as UniformDist(0, 1) < 0.1
         if np.isscalar(other):
-            other = float(other)
-            return LinearTransformedContinuousProbDist(self, 0, other)
+            return self._scale(float(other))
 
         # Distribution additions such as UniformDist(0, 1) + UniformDist(0.5, 1)
         raise NotImplementedError("Addition of distributions is not yet implemented")
 
-    def __rmul__(self, other: ProbDistLike) -> ProbDistLike:
+    def __rmul__(self, other: ProbDistLike) -> 'ContinuousProbDist':
         return self * other  # Mul is commutative
 
-    def __truediv__(self, other: ProbDistLike) -> ProbDistLike:
+    def __truediv__(self, other: ProbDistLike) -> 'ContinuousProbDist':
         """
         Adds the other scalar or probability distribution to this probability distribution.
         """
         return self * (1.0 / other)
 
-    def __rtruediv__(self, other: ProbDistLike) -> ProbDistLike:
+    def __rtruediv__(self, other: ProbDistLike) -> 'ContinuousProbDist':
         raise NotImplementedError("Division by probability distributions is not yet implemented")
 
-    def __sub__(self, other: ProbDistLike) -> ProbDistLike:
+    def __sub__(self, other: ProbDistLike) -> 'ContinuousProbDist':
         """
         Subtracts the other scalar or probability distribution from this probability distribution.
         """
         return self + (-other)
 
-    def __rsub__(self, other: ProbDistLike) -> ProbDistLike:
+    def __rsub__(self, other: ProbDistLike) -> 'ContinuousProbDist':
         return other + (-self)
 
-    def __neg__(self) -> ProbDistLike:
+    def __neg__(self) -> 'ContinuousProbDist':
         """
         Negates the values of this probability distribution.
         """
@@ -159,23 +163,14 @@ class LinearTransformedContinuousProbDist(ContinuousProbDist):
         self.dist = dist
         self.shift = shift
         self.scale = scale
-        self.inverse_shift = -shift
+        self.inverse_shift = -shift / scale
         self.inverse_scale = 1.0 / scale
 
-    def __str__(self):
-        if self.shift == 0:
-            return "({} * {})".format(self.scale, str(self.dist))
-        if self.scale == 1:
-            return "({} + {})".format(self.shift, str(self.dist))
+    def _shift(self, shift: float) -> 'ContinuousProbDist':
+        return LinearTransformedContinuousProbDist(self.dist, self.shift + shift, self.scale)
 
-        return "({} + {} * {})".format(
-            self.shift, self.scale, str(self.dist)
-        )
-
-    def __repr__(self):
-        return "LinearTransformation(shift={}, scale={}, dist={})".format(
-            self.shift, self.scale, repr(self.dist)
-        )
+    def _scale(self, scale: float) -> 'ContinuousProbDist':
+        return LinearTransformedContinuousProbDist(self.dist, self.shift * scale, self.scale * scale)
 
     def _transform(self, x: ArrayLike) -> ArrayLike:
         """ Applies the shift and scale of this transformation to x. """
@@ -198,6 +193,21 @@ class LinearTransformedContinuousProbDist(ContinuousProbDist):
     def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
         prob = prob if self.scale >= 0 else 1 - prob
         return self._transform(self.dist.inverse_cdf(prob))
+
+    def __str__(self):
+        if self.shift == 0:
+            return "({} * {})".format(self.scale, str(self.dist))
+        if self.scale == 1:
+            return "({} + {})".format(self.shift, str(self.dist))
+
+        return "({} + {} * {})".format(
+            self.shift, self.scale, str(self.dist)
+        )
+
+    def __repr__(self):
+        return "LinearTransformation(shift={}, scale={}, dist={})".format(
+            self.shift, self.scale, repr(self.dist)
+        )
 
 
 class SciPyStatsContinuousProbDist(ContinuousProbDist):
@@ -238,6 +248,14 @@ class UniformDist(SciPyStatsContinuousProbDist):
                 "UniformDist maximum must be >= to minimum. {} < {}".format(maximum, minimum)
             )
         return stats.uniform(loc=minimum, scale=maximum - minimum)
+
+    def _shift(self, shift: float) -> 'ContinuousProbDist':
+        return UniformDist(self.minimum + shift, self.maximum + shift)
+
+    def _scale(self, scale: float) -> 'ContinuousProbDist':
+        bound1 = self.minimum * scale
+        bound2 = self.maximum * scale
+        return UniformDist(min(bound1, bound2), max(bound1, bound2))
 
     def __str__(self):
         return "Uniform({}, {})".format(self.minimum, self.maximum)
