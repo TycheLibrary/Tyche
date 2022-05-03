@@ -88,6 +88,47 @@ class TestIndividuals(unittest.TestCase):
         individual.role_var.remove(individual.sub1)
         self.assertAlmostEqual(1, Expectation("role_var", "z").eval(individual))
 
+    def test_exists(self):
+        """
+        Tests the role existence operator.
+        """
+        individual = TestIndividual(0.5)
+        individual.sub1.z = 0
+        individual.sub2.z = 1
+
+        individual.role_var.clear()
+
+        # The role does not exist when it is empty.
+        self.assertAlmostEqual(0, Exists("role_var").eval(individual))
+
+        # The role does not exist if it only contains the None-individual.
+        individual.role_var.add(None, 1)
+        self.assertAlmostEqual(0, Exists("role_var").eval(individual))
+
+        # When individuals are added, the exists value should change.
+        individual.role_var.add(individual.sub1, 1)
+        self.assertAlmostEqual(0.5, Exists("role_var").eval(individual))
+        individual.role_var.add(individual.sub2, 1)
+        self.assertAlmostEqual(2.0/3.0, Exists("role_var").eval(individual))
+
+        # Individuals should override their own weight when added twice.
+        individual.role_var.add(individual.sub2, 3)
+        self.assertAlmostEqual(0.8, Exists("role_var").eval(individual))
+
+        # Removing the None-individual should affect the exists value.
+        individual.role_var.remove(None)
+        self.assertAlmostEqual(1, Exists("role_var").eval(individual))
+
+        # Removing the individuals should affect the exists value.
+        individual.role_var.add(None, 1)
+        individual.role_var.remove(individual.sub1)
+        self.assertAlmostEqual(0.75, Exists("role_var").eval(individual))
+        individual.role_var.add(individual.sub1, 1)
+        individual.role_var.remove(individual.sub2)
+        self.assertAlmostEqual(0.5, Exists("role_var").eval(individual))
+        individual.role_var.remove(individual.sub1)
+        self.assertAlmostEqual(0, Exists("role_var").eval(individual))
+
     def test_individuals(self):
         """
         Tests the evaluation of the probability of formulas.

@@ -457,10 +457,10 @@ class Expectation(Concept):
         self.concept: Concept = Concept.cast(concept)
 
     def __str__(self):
-        return "(\U0001D53C_{}. {})".format(self.role, str(self.concept))
+        return "(\U0001D53C_{}. {})".format(str(self.role), str(self.concept))
 
     def __repr__(self):
-        return 'Expectation(role=' + repr(self.role) + ', concept=' + repr(self.concept) + ')'
+        return "Expectation(role={}, concept={})".format(repr(self.role), repr(self.concept))
 
     def __eq__(self, obj):
         if type(obj) != type(self):
@@ -468,9 +468,6 @@ class Expectation(Concept):
 
         other: 'Expectation' = cast('Expectation', obj)
         return self.role == other.role and self.concept == other.concept
-
-    def __lt__(self, other):
-        raise TycheLanguageException("not yet implemented")
 
     def eval(self, context: TycheContext):
         """
@@ -495,18 +492,47 @@ class Expectation(Concept):
         # Division for the implicit given non-None.
         return total_prob / prob_weight
 
-    def normal_form(self):
-        """
-        Returns the tree normal form of the conditional,
-        by recursively calling normal for on sub elements.
-        """
-        raise TycheLanguageException("not yet implemented")
 
-    def is_equivalent(self, concept):
-        raise TycheLanguageException("not yet implemented")
+class Exists(Concept):
+    """
+    Represents the expectation about whether a value for a role exists.
+    i.e. The probability that the value of a role is non-None.
+    """
+    def __init__(self, role: CompatibleWithRole):
+        self.role: Role = Role.cast(role)
 
-    def is_weaker(self, concept):
-        raise TycheLanguageException("not yet implemented")
+    def __str__(self):
+        return "(Exists_{})".format(str(self.role))
+
+    def __repr__(self):
+        return "Exists(role={})".format(repr(self.role))
+
+    def __eq__(self, obj):
+        if type(obj) != type(self):
+            return False
+
+        other: 'Exists' = cast('Exists', obj)
+        return self.role == other.role
+
+    def eval(self, context: TycheContext):
+        """
+        Evaluates the likelihood that the given role has a non-None value.
+        """
+        exists_weight = 0
+        for other_context, prob in self.role.eval(context):
+            if other_context is None:
+                return 1.0 - prob
+            else:
+                exists_weight += prob
+
+        # Vacuous True if no entries in role.
+        if exists_weight == 0:
+            return 0.0
+
+        # Otherwise, there was no None entry in this role, so it always exists.
+        return 1.0
+
+
 
 
 class LeastFixedPoint(Concept):
