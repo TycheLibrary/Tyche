@@ -14,9 +14,30 @@ class TestDistributions(unittest.TestCase):
         Tests UniformDist.
         """
         rng = np.random.default_rng()
+        self._test_dist_min_max(rng, UniformDist(0, 1), 0, 1)
+        self._test_dist_min_max(rng, UniformDist(-1, 0), -1, 0)
+        self._test_dist_min_max(rng, UniformDist(-1, 1), -1, 1)
+        self._test_dist_min_max(rng, UniformDist(-5, 5), -5, 5)
+        self._test_dist_min_max(rng, UniformDist(5, 15), 5, 15)
+        self._test_dist_min_max(rng, UniformDist(-15, -5), -15, -5)
 
-        dist = UniformDist(0, 1)
-        self._test_dist_min_max(rng, dist, 0, 1)
+    def test_normal(self):
+        """
+        Tests NormalDist.
+        """
+        dist = NormalDist(0, 1)
+        self.assertAlmostEqual(0.5, dist.cdf(0))
+        for x in np.linspace(1, 10, num=25):
+            self.assertAlmostEqual(dist.cdf(-x), 1.0 - dist.cdf(x))
+
+    def test_truncated_normal(self):
+        """
+        Tests TruncatedNormalDist.
+        """
+        rng = np.random.default_rng()
+        self._test_dist_min_max(rng, TruncatedNormalDist(0, 1, 0, 1), 0, 1)
+        self._test_dist_min_max(rng, TruncatedNormalDist(-1, 3, -1, 1), -1, 1)
+        self._test_dist_min_max(rng, TruncatedNormalDist(-1, 6, -3, 1), -3, 1)
 
     def test_transform(self):
         """

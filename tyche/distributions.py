@@ -234,7 +234,7 @@ class SciPyStatsContinuousProbDist(ContinuousProbDist):
 
 class UniformDist(SciPyStatsContinuousProbDist):
     """
-    A continuous uniform probability distribution.
+    A uniform probability distribution.
     """
     def __init__(self, minimum: float, maximum: float):
         super().__init__(UniformDist._gen_dist(minimum, maximum))
@@ -243,9 +243,9 @@ class UniformDist(SciPyStatsContinuousProbDist):
 
     @staticmethod
     def _gen_dist(minimum: float, maximum: float) -> rv_frozen:
-        if maximum < minimum:
+        if maximum <= minimum:
             raise TycheDistributionsException(
-                "UniformDist maximum must be >= to minimum. {} < {}".format(maximum, minimum)
+                "UniformDist maximum must be > than minimum. {} <= {}".format(maximum, minimum)
             )
         return stats.uniform(loc=minimum, scale=maximum - minimum)
 
@@ -262,3 +262,87 @@ class UniformDist(SciPyStatsContinuousProbDist):
 
     def __repr__(self):
         return "UniformDist(min={}, max={})".format(self.minimum, self.maximum)
+
+
+class NormalDist(SciPyStatsContinuousProbDist):
+    """
+    A normal probability distribution.
+    """
+    def __init__(self, mean: float, std_dev: float):
+        super().__init__(NormalDist._gen_dist(mean, std_dev))
+        self.mean = mean
+        self.std_dev = std_dev
+
+    @staticmethod
+    def _gen_dist(mean: float, std_dev: float) -> rv_frozen:
+        if std_dev <= 0:
+            raise TycheDistributionsException(
+                "NormalDist std_dev must be > than 0. {} <= 0".format(std_dev)
+            )
+        return stats.norm(loc=mean, scale=std_dev)
+
+    def _shift(self, shift: float) -> 'ContinuousProbDist':
+        return NormalDist(self.mean + shift, self.std_dev)
+
+    def _scale(self, scale: float) -> 'ContinuousProbDist':
+        return NormalDist(
+            self.mean * scale,
+            abs(self.std_dev * scale)  # Normal distributions are symmetrical
+        )
+
+    def __str__(self):
+        return "Normal({}, {})".format(self.mean, self.std_dev)
+
+    def __repr__(self):
+        return "NormalDist(mean={}, std_dev={})".format(self.mean, self.std_dev)
+
+
+class TruncatedNormalDist(SciPyStatsContinuousProbDist):
+    """
+    A truncated normal probability distribution.
+    """
+    def __init__(self, mean: float, std_dev: float, minimum: float, maximum: float):
+        super().__init__(TruncatedNormalDist._gen_dist(mean, std_dev, minimum, maximum))
+        self.mean = mean
+        self.std_dev = std_dev
+        self.minimum = minimum
+        self.maximum = maximum
+
+    @staticmethod
+    def _gen_dist(mean: float, std_dev: float, minimum: float, maximum: float) -> rv_frozen:
+        if maximum <= minimum:
+            raise TycheDistributionsException(
+                "TruncatedNormalDist maximum must be > than minimum. {} <= {}".format(maximum, minimum)
+            )
+        if std_dev <= 0:
+            raise TycheDistributionsException(
+                "TruncatedNormalDist std_dev must be > than 0. {} <= 0".format(std_dev)
+            )
+
+        clip_a = (minimum - mean) / std_dev
+        clip_b = (maximum - mean) / std_dev
+        return stats.truncnorm(clip_a, clip_b, loc=mean, scale=std_dev)
+
+    def _shift(self, shift: float) -> 'ContinuousProbDist':
+        return TruncatedNormalDist(
+            self.mean + shift,
+            self.std_dev,
+            self.minimum + shift,
+            self.maximum + shift
+        )
+
+    def _scale(self, scale: float) -> 'ContinuousProbDist':
+        return TruncatedNormalDist(
+            self.mean * scale,
+            abs(self.std_dev * scale),  # Normal distributions are symmetrical
+            self.minimum * scale,
+            self.maximum * scale
+        )
+
+    def __str__(self):
+        return "TruncatedNormal({}, {}, [{}, {}])".format(self.mean, self.std_dev, self.minimum, self.maximum)
+
+    def __repr__(self):
+        return "TruncatedNormalDist(mean={}, std_dev={}, min={}, max={})".format(
+            self.mean, self.std_dev, self.minimum, self.maximum
+        )
