@@ -75,6 +75,15 @@ class ContinuousProbDist(ProbDist):
             return self._shift(float(other))
 
         # Distribution additions such as UniformDist(0, 1) + UniformDist(0.5, 1)
+        """
+        I would love for this to 'just work', but unfortunately this requires the
+        convolution of the PDFs of the two distributions. These convolutions
+        are known for fixed pairs of distributions. However, they require an infinite
+        integral for the general case (for the convolution). Therefore, this cannot be
+        implemented generally for any pair of distributions (or at least, I don't know
+        how to do that). However, implementing this for common pairs of distributions may
+        be worth it if this functionality would be helpful.
+        """
         raise NotImplementedError("Addition of distributions is not yet implemented")
 
     def __radd__(self, other: ProbDistLike) -> 'ContinuousProbDist':
@@ -88,7 +97,7 @@ class ContinuousProbDist(ProbDist):
         if np.isscalar(other):
             return self._scale(float(other))
 
-        # Distribution additions such as UniformDist(0, 1) + UniformDist(0.5, 1)
+        # Distribution multiplications such as UniformDist(0, 1) * UniformDist(0.5, 1)
         raise NotImplementedError("Addition of distributions is not yet implemented")
 
     def __rmul__(self, other: ProbDistLike) -> 'ContinuousProbDist':
