@@ -45,10 +45,10 @@ class ContinuousProbDist(ProbDist):
         super().__init__()
 
     def _shift(self, shift: float) -> 'ContinuousProbDist':
-        return LinearTransformedContinuousProbDist(self, shift, 1)
+        return LinearTransformContinuousProbDist(self, shift, 1)
 
     def _scale(self, scale: float) -> 'ContinuousProbDist':
-        return LinearTransformedContinuousProbDist(self, 0, scale)
+        return LinearTransformContinuousProbDist(self, 0, scale)
 
     def sample(self, rng: np.random.Generator, shape: Union[int, tuple, None] = None) -> float:
         """
@@ -176,57 +176,57 @@ class ContinuousProbDist(ProbDist):
         return self > other
 
 
-class LinearTransformedContinuousProbDist(ContinuousProbDist):
+class LinearTransformContinuousProbDist(ContinuousProbDist):
     """ Applies a linear transformation to a ContinuousProbDist. """
     def __init__(self, dist: ContinuousProbDist, shift: float, scale: float):
         super().__init__()
-        self.dist = dist
-        self.shift = shift
-        self.scale = scale
-        self.inverse_shift = -shift / scale
-        self.inverse_scale = 1.0 / scale
+        self._dist = dist
+        self._shift = shift
+        self._scale = scale
+        self._inverse_shift = -shift / scale
+        self._inverse_scale = 1.0 / scale
 
     def _shift(self, shift: float) -> 'ContinuousProbDist':
-        return LinearTransformedContinuousProbDist(self.dist, self.shift + shift, self.scale)
+        return LinearTransformContinuousProbDist(self._dist, self._shift + shift, self._scale)
 
     def _scale(self, scale: float) -> 'ContinuousProbDist':
-        return LinearTransformedContinuousProbDist(self.dist, self.shift * scale, self.scale * scale)
+        return LinearTransformContinuousProbDist(self._dist, self._shift * scale, self._scale * scale)
 
     def _transform(self, x: ArrayLike) -> ArrayLike:
         """ Applies the shift and scale of this transformation to x. """
-        return self.shift + self.scale * x
+        return self._shift + self._scale * x
 
     def _inverse_transform(self, x: ArrayLike) -> ArrayLike:
         """ Applies the shift and scale of this transformation to x. """
-        return self.inverse_shift + self.inverse_scale * x
+        return self._inverse_shift + self._inverse_scale * x
 
     def sample(self, rng: np.random.Generator, shape: int = None) -> ArrayLike:
-        return self._transform(self.dist.sample(rng, shape))
+        return self._transform(self._dist.sample(rng, shape))
 
     def cdf(self, x: ArrayLike) -> ArrayLike:
-        values = self.dist.cdf(self._inverse_transform(x))
-        return values if self.scale >= 0 else 1 - values
+        values = self._dist.cdf(self._inverse_transform(x))
+        return values if self._scale >= 0 else 1 - values
 
     def pdf(self, x: ArrayLike) -> ArrayLike:
-        return self.dist.pdf(self._inverse_transform(x))
+        return self._dist.pdf(self._inverse_transform(x))
 
     def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
-        prob = prob if self.scale >= 0 else 1 - prob
-        return self._transform(self.dist.inverse_cdf(prob))
+        prob = prob if self._scale >= 0 else 1 - prob
+        return self._transform(self._dist.inverse_cdf(prob))
 
     def __str__(self):
-        if self.shift == 0:
-            return "({} * {})".format(self.scale, str(self.dist))
-        if self.scale == 1:
-            return "({} + {})".format(self.shift, str(self.dist))
+        if self._shift == 0:
+            return "({} * {})".format(self._scale, str(self._dist))
+        if self._scale == 1:
+            return "({} + {})".format(self._shift, str(self._dist))
 
         return "({} + {} * {})".format(
-            self.shift, self.scale, str(self.dist)
+            self._shift, self._scale, str(self._dist)
         )
 
     def __repr__(self):
         return "LinearTransformation(shift={}, scale={}, dist={})".format(
-            self.shift, self.scale, repr(self.dist)
+            self._shift, self._scale, repr(self._dist)
         )
 
 
@@ -241,31 +241,31 @@ class UniformDist(ContinuousProbDist):
                 maximum, minimum
             ))
 
-        self.minimum = minimum
-        self.maximum = maximum
+        self._minimum = minimum
+        self._maximum = maximum
 
     def cdf(self, x: ArrayLike) -> ArrayLike:
-        return stats.uniform.cdf(x, loc=self.minimum, scale=self.maximum - self.minimum)
+        return stats.uniform.cdf(x, loc=self._minimum, scale=self._maximum - self._minimum)
 
     def pdf(self, x: ArrayLike) -> ArrayLike:
-        return stats.uniform.pdf(x, loc=self.minimum, scale=self.maximum - self.minimum)
+        return stats.uniform.pdf(x, loc=self._minimum, scale=self._maximum - self._minimum)
 
     def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
-        return stats.uniform.ppf(prob, loc=self.minimum, scale=self.maximum - self.minimum)
+        return stats.uniform.ppf(prob, loc=self._minimum, scale=self._maximum - self._minimum)
 
     def _shift(self, shift: float) -> 'ContinuousProbDist':
-        return UniformDist(self.minimum + shift, self.maximum + shift)
+        return UniformDist(self._minimum + shift, self._maximum + shift)
 
     def _scale(self, scale: float) -> 'ContinuousProbDist':
-        bound1 = self.minimum * scale
-        bound2 = self.maximum * scale
+        bound1 = self._minimum * scale
+        bound2 = self._maximum * scale
         return UniformDist(min(bound1, bound2), max(bound1, bound2))
 
     def __str__(self):
-        return "Uniform({}, {})".format(self.minimum, self.maximum)
+        return "Uniform({}, {})".format(self._minimum, self._maximum)
 
     def __repr__(self):
-        return "UniformDist(min={}, max={})".format(self.minimum, self.maximum)
+        return "UniformDist(min={}, max={})".format(self._minimum, self._maximum)
 
 
 class NormalDist(ContinuousProbDist):
@@ -277,32 +277,32 @@ class NormalDist(ContinuousProbDist):
         if std_dev <= 0:
             raise TycheDistributionsException("NormalDist std_dev must be > than 0. {} <= 0".format(std_dev))
 
-        self.mean = mean
-        self.std_dev = std_dev
+        self._mean = mean
+        self._std_dev = std_dev
 
     def cdf(self, x: ArrayLike) -> ArrayLike:
-        return stats.norm.cdf(x, loc=self.mean, scale=self.std_dev)
+        return stats.norm.cdf(x, loc=self._mean, scale=self._std_dev)
 
     def pdf(self, x: ArrayLike) -> ArrayLike:
-        return stats.norm.pdf(x, loc=self.mean, scale=self.std_dev)
+        return stats.norm.pdf(x, loc=self._mean, scale=self._std_dev)
 
     def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
-        return stats.norm.ppf(prob, loc=self.mean, scale=self.std_dev)
+        return stats.norm.ppf(prob, loc=self._mean, scale=self._std_dev)
 
     def _shift(self, shift: float) -> 'ContinuousProbDist':
-        return NormalDist(self.mean + shift, self.std_dev)
+        return NormalDist(self._mean + shift, self._std_dev)
 
     def _scale(self, scale: float) -> 'ContinuousProbDist':
         return NormalDist(
-            self.mean * scale,
-            abs(self.std_dev * scale)  # Normal distributions are symmetrical
+            self._mean * scale,
+            abs(self._std_dev * scale)  # Normal distributions are symmetrical
         )
 
     def __str__(self):
-        return "Normal({}, {})".format(self.mean, self.std_dev)
+        return "Normal({}, {})".format(self._mean, self._std_dev)
 
     def __repr__(self):
-        return "NormalDist(mean={}, std_dev={})".format(self.mean, self.std_dev)
+        return "NormalDist(mean={}, std_dev={})".format(self._mean, self._std_dev)
 
 
 class TruncatedNormalDist(ContinuousProbDist):
@@ -318,52 +318,44 @@ class TruncatedNormalDist(ContinuousProbDist):
         if std_dev <= 0:
             raise TycheDistributionsException("TruncatedNormalDist std_dev must be > than 0. {} <= 0".format(std_dev))
 
-        self.mean = mean
-        self.std_dev = std_dev
-        self.minimum = minimum
-        self.maximum = maximum
-
-    @property
-    def min_z_index(self):
-        """ The z-index of the minimum of this truncated normal distribution. """
-        return (self.minimum - self.mean) / self.std_dev
-
-    @property
-    def max_z_index(self):
-        """ The z-index of the maximum of this truncated normal distribution. """
-        return (self.maximum - self.mean) / self.std_dev
+        self._mean = mean
+        self._std_dev = std_dev
+        self._minimum = minimum
+        self._maximum = maximum
+        self._min_z_index = (self._minimum - self._mean) / self._std_dev
+        self._max_z_index = (self._maximum - self._mean) / self._std_dev
 
     def cdf(self, x: ArrayLike) -> ArrayLike:
-        return stats.truncnorm.cdf(x, self.min_z_index, self.max_z_index, loc=self.mean, scale=self.std_dev)
+        return stats.truncnorm.cdf(x, self._min_z_index, self._max_z_index, loc=self._mean, scale=self._std_dev)
 
     def pdf(self, x: ArrayLike) -> ArrayLike:
-        return stats.truncnorm.pdf(x, self.min_z_index, self.max_z_index, loc=self.mean, scale=self.std_dev)
+        return stats.truncnorm.pdf(x, self._min_z_index, self._max_z_index, loc=self._mean, scale=self._std_dev)
 
     def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
-        return stats.truncnorm.ppf(prob, self.min_z_index, self.max_z_index, loc=self.mean, scale=self.std_dev)
+        return stats.truncnorm.ppf(prob, self._min_z_index, self._max_z_index, loc=self._mean, scale=self._std_dev)
 
     def _shift(self, shift: float) -> 'ContinuousProbDist':
         return TruncatedNormalDist(
-            self.mean + shift,
-            self.std_dev,
-            self.minimum + shift,
-            self.maximum + shift
+            self._mean + shift,
+            self._std_dev,
+            self._minimum + shift,
+            self._maximum + shift
         )
 
     def _scale(self, scale: float) -> 'ContinuousProbDist':
-        bound1 = self.minimum * scale
-        bound2 = self.maximum * scale
+        bound1 = self._minimum * scale
+        bound2 = self._maximum * scale
         return TruncatedNormalDist(
-            self.mean * scale,
-            abs(self.std_dev * scale),  # Normal distributions are symmetrical
+            self._mean * scale,
+            abs(self._std_dev * scale),  # Normal distributions are symmetrical
             min(bound1, bound2),
             max(bound1, bound2)
         )
 
     def __str__(self):
-        return "TruncatedNormal({}, {}, [{}, {}])".format(self.mean, self.std_dev, self.minimum, self.maximum)
+        return "TruncatedNormal({}, {}, [{}, {}])".format(self._mean, self._std_dev, self._minimum, self._maximum)
 
     def __repr__(self):
         return "TruncatedNormalDist(mean={}, std_dev={}, min={}, max={})".format(
-            self.mean, self.std_dev, self.minimum, self.maximum
+            self._mean, self._std_dev, self._minimum, self._maximum
         )
