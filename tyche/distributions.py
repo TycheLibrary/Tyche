@@ -44,6 +44,9 @@ class ContinuousProbDist(ProbDist):
     def __init__(self):
         super().__init__()
 
+    def truncate(self, minimum: float, maximum: float) -> 'ContinuousProbDist':
+        return TruncatedContinuousProbDist(self, minimum, maximum)
+
     def _shift(self, shift: float) -> 'ContinuousProbDist':
         return LinearTransformContinuousProbDist(self, shift, 1)
 
@@ -180,9 +183,13 @@ class LinearTransformContinuousProbDist(ContinuousProbDist):
     """ Applies a linear transformation to a ContinuousProbDist. """
     def __init__(self, dist: ContinuousProbDist, shift: float, scale: float):
         super().__init__()
+        if scale == 0:
+            raise TycheDistributionsException("The scale must be non-zero")
+
         self._dist = dist
         self._shift = shift
         self._scale = scale
+        self._pdf_mul = 1.0 / abs(scale)
         self._inverse_shift = -shift / scale
         self._inverse_scale = 1.0 / scale
 
@@ -208,7 +215,7 @@ class LinearTransformContinuousProbDist(ContinuousProbDist):
         return values if self._scale >= 0 else 1 - values
 
     def pdf(self, x: ArrayLike) -> ArrayLike:
-        return self._dist.pdf(self._inverse_transform(x))
+        return self._dist.pdf(self._inverse_transform(x)) * self._pdf_mul
 
     def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
         prob = prob if self._scale >= 0 else 1 - prob
@@ -225,9 +232,65 @@ class LinearTransformContinuousProbDist(ContinuousProbDist):
         )
 
     def __repr__(self):
-        return "LinearTransformation(shift={}, scale={}, dist={})".format(
-            self._shift, self._scale, repr(self._dist)
+        return "LinearTransform(shift={}, scale={}, dist={})".format(self._shift, self._scale, repr(self._dist))
+
+
+class TruncatedContinuousProbDist(ContinuousProbDist):
+    """ Truncates a ContinuousProbDist. """
+    def __init__(self, dist: ContinuousProbDist, minimum: float, maximum: float):
+        super().__init__()
+        if maximum <= minimum:
+            raise TycheDistributionsException("TruncatedNormalDist maximum must be > than minimum. {} <= {}".format(
+                maximum, minimum
+            ))
+
+        self._dist = dist
+        self._minimum = minimum
+        self._maximum = maximum
+        self._lower_cdf = dist.cdf(minimum)
+        self._upper_cdf = dist.cdf(maximum)
+        if self._lower_cdf >= self._upper_cdf:
+            raise TycheDistributionsException(
+                "The truncation of [{}, {}] applied to {} would result in an all-zero probability distribution".format(
+                    minimum, maximum, dist
+                )
+            )
+
+        self._inverse_transform_cdf_mul = self._upper_cdf - self._lower_cdf
+        self._transform_cdf_mul = 1.0 / (self._upper_cdf - self._lower_cdf)
+
+    def truncate(self, minimum: float, maximum: float) -> 'ContinuousProbDist':
+        if minimum >= self._minimum and maximum <= self._maximum:
+            return self
+
+        return TruncatedContinuousProbDist(
+            self._dist,
+            min(self._minimum, minimum),
+            min(self._maximum, maximum)
         )
+
+    def cdf(self, x: ArrayLike) -> ArrayLike:
+        values = (self._dist.cdf(x) - self._lower_cdf) * self._transform_cdf_mul
+        return np.clip(values, 0, 1)
+
+    def pdf(self, x: ArrayLike) -> ArrayLike:
+        if np.isscalar(x) and (x < self._minimum or x > self._maximum):
+            return 0
+
+        result = self._dist.pdf(x) * self._transform_cdf_mul
+        if not np.isscalar(x):
+            result[np.where((x < self._minimum) | (x > self._maximum))] = 0
+
+        return result
+
+    def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
+        return self._dist.inverse_cdf(prob * self._inverse_transform_cdf_mul + self._lower_cdf)
+
+    def __str__(self):
+        return "Truncate([{}, {}], {})".format(self._minimum, self._maximum, self._dist)
+
+    def __repr__(self):
+        return "Truncate(min={}, max={}, dist={})".format(self._minimum, self._maximum, repr(self._dist))
 
 
 class UniformDist(ContinuousProbDist):
@@ -244,6 +307,17 @@ class UniformDist(ContinuousProbDist):
         self._minimum = minimum
         self._maximum = maximum
 
+    def _shift(self, shift: float) -> 'ContinuousProbDist':
+        return UniformDist(self._minimum + shift, self._maximum + shift)
+
+    def _scale(self, scale: float) -> 'ContinuousProbDist':
+        if scale == 0:
+            raise TycheDistributionsException("The scale must be non-zero")
+
+        bound1 = self._minimum * scale
+        bound2 = self._maximum * scale
+        return UniformDist(min(bound1, bound2), max(bound1, bound2))
+
     def cdf(self, x: ArrayLike) -> ArrayLike:
         return stats.uniform.cdf(x, loc=self._minimum, scale=self._maximum - self._minimum)
 
@@ -252,14 +326,6 @@ class UniformDist(ContinuousProbDist):
 
     def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
         return stats.uniform.ppf(prob, loc=self._minimum, scale=self._maximum - self._minimum)
-
-    def _shift(self, shift: float) -> 'ContinuousProbDist':
-        return UniformDist(self._minimum + shift, self._maximum + shift)
-
-    def _scale(self, scale: float) -> 'ContinuousProbDist':
-        bound1 = self._minimum * scale
-        bound2 = self._maximum * scale
-        return UniformDist(min(bound1, bound2), max(bound1, bound2))
 
     def __str__(self):
         return "Uniform({}, {})".format(self._minimum, self._maximum)
@@ -280,6 +346,18 @@ class NormalDist(ContinuousProbDist):
         self._mean = mean
         self._std_dev = std_dev
 
+    def _shift(self, shift: float) -> 'ContinuousProbDist':
+        return NormalDist(self._mean + shift, self._std_dev)
+
+    def _scale(self, scale: float) -> 'ContinuousProbDist':
+        if scale == 0:
+            raise TycheDistributionsException("The scale must be non-zero")
+
+        return NormalDist(
+            self._mean * scale,
+            abs(self._std_dev * scale)  # Normal distributions are symmetrical
+        )
+
     def cdf(self, x: ArrayLike) -> ArrayLike:
         return stats.norm.cdf(x, loc=self._mean, scale=self._std_dev)
 
@@ -288,15 +366,6 @@ class NormalDist(ContinuousProbDist):
 
     def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
         return stats.norm.ppf(prob, loc=self._mean, scale=self._std_dev)
-
-    def _shift(self, shift: float) -> 'ContinuousProbDist':
-        return NormalDist(self._mean + shift, self._std_dev)
-
-    def _scale(self, scale: float) -> 'ContinuousProbDist':
-        return NormalDist(
-            self._mean * scale,
-            abs(self._std_dev * scale)  # Normal distributions are symmetrical
-        )
 
     def __str__(self):
         return "Normal({}, {})".format(self._mean, self._std_dev)
