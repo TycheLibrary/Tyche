@@ -48,9 +48,9 @@ class TestDistributions(unittest.TestCase):
         Tests truncating NormalDist.
         """
         rng = np.random.default_rng()
-        a = TruncatedContinuousProbDist(NormalDist(0, 1), 0, 1)
-        b = TruncatedContinuousProbDist(NormalDist(-1, 3), -1, 1)
-        c = TruncatedContinuousProbDist(NormalDist(-1, 6), -3, 1)
+        a = TruncateContinuousProbDist(NormalDist(0, 1), 0, 1)
+        b = TruncateContinuousProbDist(NormalDist(-1, 3), -1, 1)
+        c = TruncateContinuousProbDist(NormalDist(-1, 6), -3, 1)
         self._test_dist_min_max(rng, a, 0, 1)
         self._test_dist_min_max(rng, b, -1, 1)
         self._test_dist_min_max(rng, c, -3, 1)
@@ -59,59 +59,63 @@ class TestDistributions(unittest.TestCase):
         self._test_equivalent(rng, b, TruncatedNormalDist(-1, 3, -1, 1))
         self._test_equivalent(rng, c, TruncatedNormalDist(-1, 6, -3, 1))
 
-    def test_transform(self):
+    def test_linear_transform(self):
         """
-        Tests transformations to distributions (e.g. shift and scale).
+        Tests linear transformations to distributions (e.g. shift and scale).
         """
         rng = np.random.default_rng()
-        for low, high in [(0, 1), (2, 4), (-8, -7), (-5, 5)]:
-            dist = UniformDist(low, high)
+        for low, high in [(0, 1), (2, 4), (-8, 0), (-5, 5)]:
+            test_distributions = [
+                UniformDist(low, high),
+                TruncatedNormalDist(0, 1, low, high),
+                TruncateContinuousProbDist(NormalDist(0, 1), low, high)
+            ]
+            for dist in test_distributions:
+                # Test Addition.
+                self._test_dist_min_max(rng, dist + 1, low + 1, high + 1)
+                self._test_dist_min_max(rng, 1 + dist, low + 1, high + 1)
+                self._test_dist_min_max(rng, dist + 2.5, low + 2.5, high + 2.5)
+                self._test_dist_min_max(rng, 2.5 + dist, low + 2.5, high + 2.5)
+                self._test_equivalent(rng, dist + 1, LinearTransformContinuousProbDist(dist, 1, 1))
+                self._test_equivalent(rng, 1 + dist, LinearTransformContinuousProbDist(dist, 1, 1))
+                self._test_equivalent(rng, dist + 2.5, LinearTransformContinuousProbDist(dist, 2.5, 1))
+                self._test_equivalent(rng, 2.5 + dist, LinearTransformContinuousProbDist(dist, 2.5, 1))
 
-            # Test Addition.
-            self._test_dist_min_max(rng, dist + 1, low + 1, high + 1)
-            self._test_dist_min_max(rng, 1 + dist, low + 1, high + 1)
-            self._test_dist_min_max(rng, dist + 2.5, low + 2.5, high + 2.5)
-            self._test_dist_min_max(rng, 2.5 + dist, low + 2.5, high + 2.5)
-            self._test_equivalent(rng, dist + 1, LinearTransformContinuousProbDist(dist, 1, 1))
-            self._test_equivalent(rng, 1 + dist, LinearTransformContinuousProbDist(dist, 1, 1))
-            self._test_equivalent(rng, dist + 2.5, LinearTransformContinuousProbDist(dist, 2.5, 1))
-            self._test_equivalent(rng, 2.5 + dist, LinearTransformContinuousProbDist(dist, 2.5, 1))
+                # Test Subtraction.
+                self._test_dist_min_max(rng, dist - 1, low - 1, high - 1)
+                self._test_dist_min_max(rng, 1 - dist, 1 - high, 1 - low)
+                self._test_dist_min_max(rng, dist - 2.5, low - 2.5, high - 2.5)
+                self._test_dist_min_max(rng, 2.5 - dist, 2.5 - high, 2.5 - low)
+                self._test_equivalent(rng, dist - 1, LinearTransformContinuousProbDist(dist, -1, 1))
+                self._test_equivalent(rng, 1 - dist, LinearTransformContinuousProbDist(dist, 1, -1))
+                self._test_equivalent(rng, dist - 2.5, LinearTransformContinuousProbDist(dist, -2.5, 1))
+                self._test_equivalent(rng, 2.5 - dist, LinearTransformContinuousProbDist(dist, 2.5, -1))
 
-            # Test Subtraction.
-            self._test_dist_min_max(rng, dist - 1, low - 1, high - 1)
-            self._test_dist_min_max(rng, 1 - dist, 1 - high, 1 - low)
-            self._test_dist_min_max(rng, dist - 2.5, low - 2.5, high - 2.5)
-            self._test_dist_min_max(rng, 2.5 - dist, 2.5 - high, 2.5 - low)
-            self._test_equivalent(rng, dist - 1, LinearTransformContinuousProbDist(dist, -1, 1))
-            self._test_equivalent(rng, 1 - dist, LinearTransformContinuousProbDist(dist, 1, -1))
-            self._test_equivalent(rng, dist - 2.5, LinearTransformContinuousProbDist(dist, -2.5, 1))
-            self._test_equivalent(rng, 2.5 - dist, LinearTransformContinuousProbDist(dist, 2.5, -1))
+                # Test Multiplication.
+                self._test_dist_min_max(rng, dist * 2, low * 2, high * 2)
+                self._test_dist_min_max(rng, 2 * dist, low * 2, high * 2)
+                self._test_dist_min_max(rng, dist * -1, high * -1, low * -1)
+                self._test_dist_min_max(rng, -1 * dist, high * -1, low * -1)
+                self._test_equivalent(rng, dist * 2, LinearTransformContinuousProbDist(dist, 0, 2))
+                self._test_equivalent(rng, 2 * dist, LinearTransformContinuousProbDist(dist, 0, 2))
+                self._test_equivalent(rng, dist * -1, LinearTransformContinuousProbDist(dist, 0, -1))
+                self._test_equivalent(rng, -1 * dist, LinearTransformContinuousProbDist(dist, 0, -1))
 
-            # Test Multiplication.
-            self._test_dist_min_max(rng, dist * 2, low * 2, high * 2)
-            self._test_dist_min_max(rng, 2 * dist, low * 2, high * 2)
-            self._test_dist_min_max(rng, dist * -1, high * -1, low * -1)
-            self._test_dist_min_max(rng, -1 * dist, high * -1, low * -1)
-            self._test_equivalent(rng, dist * 2, LinearTransformContinuousProbDist(dist, 0, 2))
-            self._test_equivalent(rng, 2 * dist, LinearTransformContinuousProbDist(dist, 0, 2))
-            self._test_equivalent(rng, dist * -1, LinearTransformContinuousProbDist(dist, 0, -1))
-            self._test_equivalent(rng, -1 * dist, LinearTransformContinuousProbDist(dist, 0, -1))
+                # Test Division.
+                self._test_dist_min_max(rng, dist / 2, low / 2, high / 2)
+                self._test_dist_min_max(rng, dist / -1, high / -1, low / -1)
+                self._test_equivalent(rng, dist / 2, LinearTransformContinuousProbDist(dist, 0, 0.5))
+                self._test_equivalent(rng, dist / -1, LinearTransformContinuousProbDist(dist, 0, -1))
 
-            # Test Division.
-            self._test_dist_min_max(rng, dist / 2, low / 2, high / 2)
-            self._test_dist_min_max(rng, dist / -1, high / -1, low / -1)
-            self._test_equivalent(rng, dist / 2, LinearTransformContinuousProbDist(dist, 0, 0.5))
-            self._test_equivalent(rng, dist / -1, LinearTransformContinuousProbDist(dist, 0, -1))
-
-            # Test Addition and Multiplication.
-            self._test_dist_min_max(rng, 2 * (dist + 1), 2 * (low + 1), 2 * (high + 1))
-            self._test_dist_min_max(rng, (1 + dist) * 2, 2 * (low + 1), 2 * (high + 1))
-            self._test_dist_min_max(rng, 0.5 * (dist + 2.5), 0.5 * (low + 2.5), 0.5 * (high + 2.5))
-            self._test_dist_min_max(rng, (2.5 + dist) * 0.5, 0.5 * (low + 2.5), 0.5 * (high + 2.5))
-            self._test_equivalent(rng, 2 * (dist + 1), LinearTransformContinuousProbDist(dist, 2, 2))
-            self._test_equivalent(rng, (1 + dist) * 2, LinearTransformContinuousProbDist(dist, 2, 2))
-            self._test_equivalent(rng, 0.5 * (dist + 2.5), LinearTransformContinuousProbDist(dist, 1.25, 0.5))
-            self._test_equivalent(rng, (2.5 + dist) * 0.5, LinearTransformContinuousProbDist(dist, 1.25, 0.5))
+                # Test Addition and Multiplication.
+                self._test_dist_min_max(rng, 2 * (dist + 1), 2 * (low + 1), 2 * (high + 1))
+                self._test_dist_min_max(rng, (1 + dist) * 2, 2 * (low + 1), 2 * (high + 1))
+                self._test_dist_min_max(rng, 0.5 * (dist + 2.5), 0.5 * (low + 2.5), 0.5 * (high + 2.5))
+                self._test_dist_min_max(rng, (2.5 + dist) * 0.5, 0.5 * (low + 2.5), 0.5 * (high + 2.5))
+                self._test_equivalent(rng, 2 * (dist + 1), LinearTransformContinuousProbDist(dist, 2, 2))
+                self._test_equivalent(rng, (1 + dist) * 2, LinearTransformContinuousProbDist(dist, 2, 2))
+                self._test_equivalent(rng, 0.5 * (dist + 2.5), LinearTransformContinuousProbDist(dist, 1.25, 0.5))
+                self._test_equivalent(rng, (2.5 + dist) * 0.5, LinearTransformContinuousProbDist(dist, 1.25, 0.5))
 
     def _test_equivalent(self, rng: np.random.Generator, dist1: ContinuousProbDist, dist2: ContinuousProbDist):
         """

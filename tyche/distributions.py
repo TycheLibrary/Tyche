@@ -45,7 +45,7 @@ class ContinuousProbDist(ProbDist):
         super().__init__()
 
     def truncate(self, minimum: float, maximum: float) -> 'ContinuousProbDist':
-        return TruncatedContinuousProbDist(self, minimum, maximum)
+        return TruncateContinuousProbDist(self, minimum, maximum)
 
     def _shift(self, shift: float) -> 'ContinuousProbDist':
         return LinearTransformContinuousProbDist(self, shift, 1)
@@ -187,21 +187,21 @@ class LinearTransformContinuousProbDist(ContinuousProbDist):
             raise TycheDistributionsException("The scale must be non-zero")
 
         self._dist = dist
-        self._shift = shift
-        self._scale = scale
+        self._linear_shift = shift
+        self._linear_scale = scale
         self._pdf_mul = 1.0 / abs(scale)
         self._inverse_shift = -shift / scale
         self._inverse_scale = 1.0 / scale
 
     def _shift(self, shift: float) -> 'ContinuousProbDist':
-        return LinearTransformContinuousProbDist(self._dist, self._shift + shift, self._scale)
+        return LinearTransformContinuousProbDist(self._dist, self._linear_shift + shift, self._linear_scale)
 
     def _scale(self, scale: float) -> 'ContinuousProbDist':
-        return LinearTransformContinuousProbDist(self._dist, self._shift * scale, self._scale * scale)
+        return LinearTransformContinuousProbDist(self._dist, self._linear_shift * scale, self._linear_scale * scale)
 
     def _transform(self, x: ArrayLike) -> ArrayLike:
         """ Applies the shift and scale of this transformation to x. """
-        return self._shift + self._scale * x
+        return self._linear_shift + self._linear_scale * x
 
     def _inverse_transform(self, x: ArrayLike) -> ArrayLike:
         """ Applies the shift and scale of this transformation to x. """
@@ -212,30 +212,32 @@ class LinearTransformContinuousProbDist(ContinuousProbDist):
 
     def cdf(self, x: ArrayLike) -> ArrayLike:
         values = self._dist.cdf(self._inverse_transform(x))
-        return values if self._scale >= 0 else 1 - values
+        return values if self._linear_scale >= 0 else 1 - values
 
     def pdf(self, x: ArrayLike) -> ArrayLike:
         return self._dist.pdf(self._inverse_transform(x)) * self._pdf_mul
 
     def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
-        prob = prob if self._scale >= 0 else 1 - prob
+        prob = prob if self._linear_scale >= 0 else 1 - prob
         return self._transform(self._dist.inverse_cdf(prob))
 
     def __str__(self):
         if self._shift == 0:
-            return "({} * {})".format(self._scale, str(self._dist))
+            return "({} * {})".format(self._linear_scale, str(self._dist))
         if self._scale == 1:
-            return "({} + {})".format(self._shift, str(self._dist))
+            return "({} + {})".format(self._linear_shift, str(self._dist))
 
         return "({} + {} * {})".format(
-            self._shift, self._scale, str(self._dist)
+            self._linear_shift, self._linear_scale, str(self._dist)
         )
 
     def __repr__(self):
-        return "LinearTransform(shift={}, scale={}, dist={})".format(self._shift, self._scale, repr(self._dist))
+        return "LinearTransform(shift={}, scale={}, dist={})".format(
+            self._linear_shift, self._linear_scale, repr(self._dist)
+        )
 
 
-class TruncatedContinuousProbDist(ContinuousProbDist):
+class TruncateContinuousProbDist(ContinuousProbDist):
     """ Truncates a ContinuousProbDist. """
     def __init__(self, dist: ContinuousProbDist, minimum: float, maximum: float):
         super().__init__()
@@ -263,7 +265,7 @@ class TruncatedContinuousProbDist(ContinuousProbDist):
         if minimum >= self._minimum and maximum <= self._maximum:
             return self
 
-        return TruncatedContinuousProbDist(
+        return TruncateContinuousProbDist(
             self._dist,
             min(self._minimum, minimum),
             min(self._maximum, maximum)
