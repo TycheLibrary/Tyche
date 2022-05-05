@@ -74,6 +74,7 @@ supervisor_WWCC = Exists("supervisor") & Expectation("supervisor", "wwcc")
 supervisor = Role('supervisor') #supervisor is a role object wih functions is, is_not, is_given
 print()
 print("P(clare is an adult) = {:.3f}".format(adult.eval(clare)))
+print("P(clare passed) = {:.3f}".format(Atom("passed").eval(clare)))
 print()
 print("clare's supervisor has a WWCC = {}".format(supervisor_WWCC))
 print("P(clare's supervisor has a WWCC) = {:.3f}".format(supervisor_WWCC.eval(clare)))
