@@ -9,12 +9,15 @@ from tyche.language import *
 
 
 class Person(Individual):
+    is_male: TycheConcept
+
     def __init__(self, name=None, gender=None, age=None):
         super().__init__()
         # self.name = StringField(name)
         # self.gender = StringDist('male','female','other')
         self.age = UniformDist(0, 120)
         self.height_cm = NormalDist(170.8, 7).truncate(10, 272)
+        self.is_male = False
 
     @property
     def height_ft(self):
@@ -87,9 +90,10 @@ adult = Atom('adult')
 supervisor_WWCC = Exists("supervisor") & Expectation("supervisor", "wwcc")
 tall_adult = adult & Atom("tall")
 supervisor_tall_adult = Exists("supervisor") & Expectation("supervisor", tall_adult)
-supervisor = Role('supervisor') # supervisor is a role object wih functions is, is_not, is_given
+supervisor = Role('supervisor')  # supervisor is a role object wih functions is, is_not, is_given
 
 print()
+print("P(clare is male) = {:.3f}".format(Atom("is_male").eval(clare)))
 print("P(clare is an adult) = {:.3f}".format(adult.eval(clare)))
 print("P(clare passed) = {:.3f}".format(Atom("passed").eval(clare)))
 print("P(clare is tall) = {:.3f}".format(Atom("tall").eval(clare)))

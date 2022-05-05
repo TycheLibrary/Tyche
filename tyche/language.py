@@ -311,14 +311,7 @@ class Atom(Concept):
         raise TycheLanguageException("not yet implemented")
 
     def eval(self, context: TycheContext) -> float:
-        value = context.eval_concept(self.symbol)
-        if value < 0 or value > 1:
-            raise TycheLanguageException(
-                "Evaluation of atom {} did not fall into the range [0, 1], instead was {}".format(
-                    self.symbol, value
-                )
-            )
-        return value
+        return context.eval_concept(self.symbol)
 
     def normal_form(self):
         return self
@@ -485,7 +478,7 @@ class Expectation(Concept):
             else:
                 total_prob += prob * self.concept.eval(other_context)
 
-        # Vacuous True if only None in role.
+        # Vacuously True if only None in role.
         if prob_weight == 0:
             return 1
 

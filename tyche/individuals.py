@@ -2,12 +2,15 @@
 Provides convenience classes for setting up a model using classes.
 """
 from typing import TypeVar, Callable, get_type_hints, Final, Type
+
+import numpy as np
+
 from tyche.language import WeightedRoleDistribution, TycheLanguageException, TycheContext, Atom
 
 
 # Marks instance variables of classes as probabilities that
 # may be accessed by Tyche formulas.
-TycheConcept = TypeVar("TycheConcept", float, int)
+TycheConcept = TypeVar("TycheConcept", float, int, bool)
 TycheRole = TypeVar("TycheRole", bound=WeightedRoleDistribution)
 
 
@@ -167,7 +170,40 @@ class Individual(TycheContext):
         return role.get(obj_type).all_symbols
 
     def eval_concept(self, symbol: str) -> float:
-        return self.concepts.get(self, symbol)
+        value = self.concepts.get(self, symbol)
+        if np.isscalar(value):
+            if value < 0:
+                raise TycheIndividualsException(
+                    "The {} context {} evaluated the concept {} to a value less than 0".format(
+                        type(self).__name__, self, symbol
+                    )
+                )
+            if value > 1:
+                raise TycheIndividualsException(
+                    "The {} context {} evaluated the concept {} to a value greater than 1".format(
+                        type(self).__name__, self, symbol
+                    )
+                )
+
+            return float(value)
+
+        if isinstance(value, bool):
+            return 1 if value else 0
+
+        raise TycheIndividualsException(
+            "The {} context {} evaluated the concept {} to the {} {}. Expected a float, int, or bool".format(
+                type(self).__name__, self, symbol, type(value).__name__, value
+            )
+        )
 
     def eval_role(self, symbol: str) -> WeightedRoleDistribution:
-        return self.roles.get(self, symbol)
+        value = self.roles.get(self, symbol)
+        if isinstance(value, WeightedRoleDistribution):
+            return value
+
+        raise TycheIndividualsException(
+            "The {} context {} evaluated the role {} to the {} {}. "
+            "Expected an instance of WeightedRoleDistribution".format(
+                type(self).__name__, self, symbol, type(value).__name__, value
+            )
+        )
