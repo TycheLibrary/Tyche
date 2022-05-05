@@ -72,10 +72,12 @@ adult = Atom('adult')
 
 supervisor_WWCC = Exists("supervisor") & Expectation("supervisor", "wwcc")
 supervisor = Role('supervisor') #supervisor is a role object wih functions is, is_not, is_given
+print()
 print("P(clare is an adult) = {:.3f}".format(adult.eval(clare)))
 print()
 print("clare's supervisor has a WWCC = {}".format(supervisor_WWCC))
 print("P(clare's supervisor has a WWCC) = {:.3f}".format(supervisor_WWCC.eval(clare)))
+print()
 
 # clare.supervisor #is a distribution of individuals
 # clare.prob(adult.when(supervisor.is_not(concept('wwcc'))).otherwise(Yes))   #(a?b:c) = b.when(a).otherwise(c)
