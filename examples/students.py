@@ -14,10 +14,21 @@ class Person(Individual):
         # self.name = StringField(name)
         # self.gender = StringDist('male','female','other')
         self.age = UniformDist(0, 120)
+        self.height_cm = NormalDist(170.8, 7).truncate(10, 272)
+
+    @property
+    def height_ft(self):
+        """ Returns the distribution of heights in feet. """
+        return self.height_cm * 0.0328084
 
     @concept
     def adult(self) -> float:
         return self.age >= 18
+
+    @concept
+    def tall(self) -> float:
+        """ We consider anyone over 6 feet to be tall. """
+        return self.height_ft > 6
 
 
 class Student(Person):
@@ -50,6 +61,7 @@ class Supervisor(Person):
     def __init__(self, wwcc=0.0):
         super().__init__()
         # self.students = SetDistribution(Student.cls)#somethig like this, hack otgether manually
+        self.age = self.age.truncate(21, 120)
         self._wwcc = wwcc
 
     @concept
@@ -60,7 +72,9 @@ class Supervisor(Person):
 
 clare = Student()
 natasha = Supervisor(0.7)
+tim = Supervisor(0.85)
 clare.supervisor.add(natasha, 2)
+clare.supervisor.add(tim, 0.5)
 clare.supervisor.add(None, 1)
 
 adult = Atom('adult')
@@ -71,10 +85,20 @@ adult = Atom('adult')
 #     Conditional(condition=adult, if_yes=Concept('X'), if_no=No) where X is a new String
 
 supervisor_WWCC = Exists("supervisor") & Expectation("supervisor", "wwcc")
-supervisor = Role('supervisor') #supervisor is a role object wih functions is, is_not, is_given
+tall_adult = adult & Atom("tall")
+supervisor_tall_adult = Exists("supervisor") & Expectation("supervisor", tall_adult)
+supervisor = Role('supervisor') # supervisor is a role object wih functions is, is_not, is_given
+
 print()
 print("P(clare is an adult) = {:.3f}".format(adult.eval(clare)))
 print("P(clare passed) = {:.3f}".format(Atom("passed").eval(clare)))
+print("P(clare is tall) = {:.3f}".format(Atom("tall").eval(clare)))
+print()
+print("clare is a tall adult = {}".format(tall_adult))
+print("P(clare is a tall adult) = {:.3f}".format(tall_adult.eval(clare)))
+print()
+print("clare's supervisor is a tall adult = {}".format(supervisor_tall_adult))
+print("P(clare's supervisor is a tall adult) = {:.3f}".format(supervisor_tall_adult.eval(clare)))
 print()
 print("clare's supervisor has a WWCC = {}".format(supervisor_WWCC))
 print("P(clare's supervisor has a WWCC) = {:.3f}".format(supervisor_WWCC.eval(clare)))
