@@ -21,7 +21,7 @@ class Person(Individual):
 
     @property
     def height_ft(self):
-        """ Returns the distribution of heights in feet. """
+        """ Returns the distribution of height in feet. """
         return self.height_cm * 0.0328084
 
     @concept

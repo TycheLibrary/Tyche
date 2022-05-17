@@ -207,3 +207,12 @@ class Individual(TycheContext):
                 type(self).__name__, self, symbol, type(value).__name__, value
             )
         )
+
+
+class IdRoleGovernedIndividual(TycheContext):
+    """
+    Implicitly represents a role over the set of possible states that an individual could be.
+    Evaluation of concepts and roles with this context will implicitly perform an expectation
+    over the set of possible individuals in the id role.
+    """
+    pass

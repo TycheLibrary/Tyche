@@ -87,9 +87,10 @@ class WeightedRoleDistribution:
     def __iter__(self):
         """
         Yields tuples of TycheContext objects or None, and their associated
-        probabilities. The sum of all returned probabilities should
-        sum to 1, although there may be some deviance from this due
-        to floating point error.
+        probabilities (i.e. Tuple[Optional[TycheContext], float]).
+        The sum of all returned probabilities should sum to 1,
+        although there may be some deviance from this due to
+        floating point error.
         """
         total_weight = self.total_weight
         if total_weight == 0:
@@ -99,6 +100,34 @@ class WeightedRoleDistribution:
 
         for context, weight in self.entries:
             yield context, weight / total_weight
+
+    def apply_bayes_rule(self, observation: 'Concept'):
+        """
+        Applies Bayes' rule to update the probabilities of the individuals
+        mapped within this role based upon an observation. This cannot
+        learn anything about the None individual.
+        """
+        total_weight = self.total_weight
+        if total_weight == 0:
+            # If there are no entries, then we can't learn anything.
+            return
+
+        role_belief: float = Expectation.evaluate_for_role(self, observation)
+
+        learned_entries = []
+        for context, weight in self.entries:
+            if context is None:
+                # Can't learn the null-individual
+                learned_entries.append((context, weight))
+                continue
+
+            belief = observation.eval(context)
+            new_weight = weight * belief / role_belief
+            learned_entries.append((context, new_weight))
+
+        self.entries = learned_entries
+        # Shouldn't have changed except due to floating-point error.
+        self._update_total_weight()
 
 
 class TycheContext:
@@ -462,6 +491,28 @@ class Expectation(Concept):
         other: 'Expectation' = cast('Expectation', obj)
         return self.role == other.role and self.concept == other.concept
 
+    @staticmethod
+    def evaluate_for_role(role: WeightedRoleDistribution, concept: Concept) -> float:
+        """
+        Evaluates this expectation over the given role, without requiring a context.
+        This evaluation contains an implicit given that the role is non-None. If the
+        role only contains None, then this will evaluate to vacuously True.
+        """
+        total_prob = 0.0
+        prob_weight = 1.0
+        for other_context, prob in role:
+            if other_context is None:
+                prob_weight = 1.0 - prob
+            else:
+                total_prob += prob * concept.eval(other_context)
+
+        # Vacuously True if only None in role.
+        if prob_weight == 0:
+            return 1
+
+        # Division for the implicit given non-None.
+        return total_prob / prob_weight
+
     def eval(self, context: TycheContext):
         """
         Evaluates the concept for all members of the role mapping
@@ -470,20 +521,7 @@ class Expectation(Concept):
         If the role only contains None, then this will evaluate
         to vacuously True.
         """
-        total_prob = 0.0
-        prob_weight = 1.0
-        for other_context, prob in self.role.eval(context):
-            if other_context is None:
-                prob_weight = 1.0 - prob
-            else:
-                total_prob += prob * self.concept.eval(other_context)
-
-        # Vacuously True if only None in role.
-        if prob_weight == 0:
-            return 1
-
-        # Division for the implicit given non-None.
-        return total_prob / prob_weight
+        return Expectation.evaluate_for_role(self.role.eval(context), self.concept)
 
 
 class Exists(Concept):
