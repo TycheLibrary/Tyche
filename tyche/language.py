@@ -4,7 +4,7 @@ description logic (ADL) formulas.
 
 ADL is designed to support both mathematical notion and a formal english notion.
 """
-from typing import Final, cast, TypeVar, Optional
+from typing import Final, cast, TypeVar, Optional, Union, Tuple
 
 from tyche.reference import MutableReference
 
@@ -17,6 +17,13 @@ class TycheLanguageException(Exception):
         self.message = "TycheLanguageException: " + message
 
 
+RoleDistributionEntries: type = Union[
+    None,
+    list[Union['TycheContext', Tuple['TycheContext', float]]],
+    dict['TycheContext', float]
+]
+
+
 class WeightedRoleDistribution:
     """
     Represents a probability distribution of contexts for a role.
@@ -24,23 +31,50 @@ class WeightedRoleDistribution:
     represent their likelihood of being selected. The probability
     of selecting an item is fixed at 100%.
     """
-    def __init__(self, *, entries: list[tuple[Optional['TycheContext'], float]] = None):
-        self.entries: list[tuple[Optional['TycheContext'], float]] = [] if entries is None else entries
+    def __init__(self, entries: RoleDistributionEntries = None):
+        self._entries: list[tuple[Optional['TycheContext'], float]] = []
+        if entries is not None:
+            if isinstance(entries, list):
+                for entry in entries:
+                    if isinstance(entry, TycheContext):
+                        self.add(entry)
+                        continue
+                    if isinstance(entry, tuple):
+                        ctx, weight = entry
+                        if isinstance(ctx, TycheContext) and isinstance(weight, float):
+                            self.add(ctx, weight)
+                            continue
+
+                    raise TycheLanguageException(f"Illegal entry in entries list: {entry}")
+            elif isinstance(entries, dict):
+                for ctx, weight in entries.items():
+                    if not isinstance(ctx, TycheContext) or not isinstance(weight, float):
+                        raise TycheLanguageException(f"Illegal entry in entries dict: {(ctx, weight)}")
+                    self.add(ctx, weight)
+            else:
+                raise TycheLanguageException(f"Illegal entries value: {entries}")
+
+    def is_empty(self) -> bool:
+        """
+        Returns whether no individuals (including None) have been added to this role.
+        If None was explicitly added, then this will return False.
+        """
+        return len(self._entries) == 0
 
     @property
     def total_weight(self):
         """ The sum of the weights of all entries in this role distribution. """
         total = 0
-        for _, weight in self.entries:
+        for _, weight in self._entries:
             total += weight
         return total
 
     def clear(self):
         """ Removes all individuals from this distribution. """
-        self.entries = []
+        self._entries = []
 
     def _index_of(self, individual: Optional['TycheContext']):
-        for index, (ctx, _) in enumerate(self.entries):
+        for index, (ctx, _) in enumerate(self._entries):
             if ctx is individual:
                 return index
         return None
@@ -67,19 +101,43 @@ class WeightedRoleDistribution:
 
         existing_index = self._index_of(individual)
         if existing_index is not None:
-            self.entries[existing_index] = entry
+            self._entries[existing_index] = entry
         else:
-            self.entries.append(entry)
+            self._entries.append(entry)
+
+    def add_combining_weights(self, individual: Optional['TycheContext'], weight: float):
+        """
+        Add an individual to this distribution with the given weight.
+        The weightings of individuals are relative to one another. If
+        an individual already exists in the distribution, then its
+        weighting will be increased by the given weight.
+        """
+        if weight <= 0:
+            raise TycheLanguageException("Value weights must be positive, not {}".format(weight))
+
+        existing_index = self._index_of(individual)
+        if existing_index is not None:
+            _, existing_weight = self._entries[existing_index]
+            self._entries[existing_index] = (individual, existing_weight + weight)
+        else:
+            self._entries.append((individual, weight))
 
     def remove(self, individual: Optional['TycheContext']):
-        """
-        Removes the given individual from this distribution.
-        """
+        """ Removes the given individual from this distribution. """
         existing_index = self._index_of(individual)
         if existing_index is None:
             return
 
-        del self.entries[existing_index]
+        del self._entries[existing_index]
+
+    def contexts(self):
+        """ Yields all the contexts within this role, including None if it is present. """
+        for ctx, _ in self._entries:
+            yield ctx
+
+    def __len__(self):
+        """ Returns the number of entries in this role, including the None role if it is present. """
+        return max(1, len(self._entries))
 
     def __iter__(self):
         """
@@ -95,7 +153,7 @@ class WeightedRoleDistribution:
             yield None, 1
             return
 
-        for context, weight in self.entries:
+        for context, weight in self._entries:
             yield context, weight / total_weight
 
     def apply_bayes_rule(self, observation: 'Concept') -> 'WeightedRoleDistribution':
@@ -111,9 +169,11 @@ class WeightedRoleDistribution:
             return self
 
         role_belief: float = Expectation.evaluate_for_role(self, observation)
+        if role_belief == 0:
+            raise TycheLanguageException("Observation is impossible within model")
 
         learned_entries: list[tuple[Optional['TycheContext'], float]] = []
-        for context, weight in self.entries:
+        for context, weight in self._entries:
             if context is None:
                 # Can't learn the null-individual
                 learned_entries.append((context, weight))
@@ -121,9 +181,10 @@ class WeightedRoleDistribution:
 
             belief = observation.eval(context)
             new_weight = weight * belief / role_belief
-            learned_entries.append((context, new_weight))
+            if new_weight > 0:
+                learned_entries.append((context, new_weight))
 
-        return WeightedRoleDistribution(entries=learned_entries)
+        return WeightedRoleDistribution(learned_entries)
 
 
 class TycheContext:
@@ -504,6 +565,24 @@ class Expectation(Concept):
 
         other: 'Expectation' = cast('Expectation', obj)
         return self.role == other.role and self.concept == other.concept
+
+    @staticmethod
+    def evaluate_role_under_role(outer_role: WeightedRoleDistribution, inner_role: Role) -> WeightedRoleDistribution:
+        """
+        Evaluates the expected role over a given set of roles. The chance
+        of the contexts in the returned role represents the chance that
+        the context is selected from an inner_role selected from outer_role.
+        """
+        result = WeightedRoleDistribution()
+        for outer_context, outer_prob in outer_role:
+            if outer_context is None:
+                result.add_combining_weights(None, outer_prob)
+                continue
+
+            for inner_context, inner_prob in inner_role.eval(outer_context):
+                result.add_combining_weights(inner_context, outer_prob * inner_prob)
+
+        return result
 
     @staticmethod
     def evaluate_for_role(role: WeightedRoleDistribution, concept: Concept) -> float:

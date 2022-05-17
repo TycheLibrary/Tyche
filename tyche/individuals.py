@@ -1,11 +1,12 @@
 """
 Provides convenience classes for setting up a model using classes.
 """
-from typing import TypeVar, Callable, get_type_hints, Final, Type, cast, Generic
+from typing import TypeVar, Callable, get_type_hints, Final, Type, cast, Generic, Optional
 
 import numpy as np
 
-from tyche.language import WeightedRoleDistribution, TycheLanguageException, TycheContext, Atom, Concept, Expectation
+from tyche.language import WeightedRoleDistribution, TycheLanguageException, TycheContext, Atom, Concept, Expectation, \
+    Role, RoleDistributionEntries
 
 # Marks instance variables of classes as probabilities that
 # may be accessed by Tyche formulas.
@@ -44,7 +45,7 @@ class TycheAccessorStore(Generic[AccessedValueType]):
             return getattr(obj, symbol)()
         else:
             raise TycheLanguageException("Unknown {} {} for type {}".format(
-                self.type_name, symbol, type(obj).__key__
+                self.type_name, symbol, type(obj).__name__
             ))
 
     def get_mutable(self, obj: any, symbol: str) -> MutableReference[AccessedValueType, AccessedValueType]:
@@ -259,10 +260,92 @@ class Individual(TycheContext):
             raise Exception(f"Updating of beliefs based upon observations of type {type(concept)} are not supported")
 
 
-class IdRoleGovernedIndividual(TycheContext):
+class IdentityIndividual(TycheContext):
     """
-    Implicitly represents a role over the set of possible states that an individual could be.
+    Implicitly represents a role over the set of possible states that an individual could take.
     Evaluation of concepts and roles with this context will implicitly perform an expectation
     over the set of possible individuals in the id role.
+
+    The None-individual is not supported for identity roles.
     """
-    pass
+    _id: TycheRoleField
+
+    def __init__(self, entries: RoleDistributionEntries = None):
+        super().__init__()
+        self._id = WeightedRoleDistribution(entries)
+        for ctx in self._id.contexts():
+            if ctx is None:
+                raise TycheIndividualsException("None individuals are not supported by IndividualIdentity")
+
+    def is_empty(self) -> bool:
+        """ Returns whether no possible individuals have been added. """
+        return self._id.is_empty()
+
+    def _verify_not_empty(self):
+        if self.is_empty():
+            raise Exception("This IndividualIdentity has not been given any possible individuals")
+
+    def add(self, individual: TycheContext, weight: float = 1):
+        """
+        Adds a possible individual with the given weight. The weights
+        represent the relative weight of the individual against the
+        weights of other individuals. If the given individual already
+        exists, this will replace their weight.
+
+        If no weight is given, the default weight of 1 will be used.
+        """
+        if individual is None:
+            raise TycheIndividualsException("None individuals are not supported by IndividualIdentity")
+
+        self._id.add(individual, weight)
+
+    def remove(self, individual: TycheContext):
+        """ Removes the given individual from this identity individual. """
+        return self._id.remove(individual)
+
+    def eval_concept(self, symbol: str) -> float:
+        self._verify_not_empty()
+        return Expectation.evaluate_for_role(self._id, Atom(symbol))
+
+    def eval_role(self, symbol: str) -> WeightedRoleDistribution:
+        self._verify_not_empty()
+        return Expectation.evaluate_role_under_role(self._id, Role(symbol))
+
+    def eval_mutable_concept(self, symbol: str) -> MutableReference[float, float]:
+        raise TycheIndividualsException(
+            f"Cannot evaluate mutable concepts for instances of {type(self).__name__}"
+        )
+
+    def eval_mutable_role(self, symbol: str) -> MutableReference[WeightedRoleDistribution, WeightedRoleDistribution]:
+        raise TycheIndividualsException(
+            f"Cannot evaluate mutable roles for instances of {type(self).__name__}"
+        )
+
+    def observe(self, concept: Concept):
+        """
+        Updates the belief about what individual is the true individual
+        based upon an observation of a concept.
+        """
+        self._verify_not_empty()
+
+        # It may not be totally expected that this observation _only_
+        # updates the id role, but ignores updates to any roles within
+        # the individuals that could be updated.
+        self._id = self._id.apply_bayes_rule(concept)
+
+    def __iter__(self):
+        """
+        Yields tuples of the possible individuals that could
+        represent this individual, and their probability.
+        """
+        self._verify_not_empty()
+        for ctx, prob in self._id:
+            yield ctx, prob
+
+    def __str__(self):
+        if self._id.is_empty():
+            return f"{{<empty {type(self).__name__}>}}"
+
+        individual_percentages = [f"{100 * prob:.1f}%: {ctx}" for ctx, prob in self._id]
+        possible_individuals = ", ".join(individual_percentages)
+        return f"{{{possible_individuals}}}"

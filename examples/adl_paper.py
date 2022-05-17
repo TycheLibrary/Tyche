@@ -2,8 +2,8 @@
 This file contains examples from the paper "Aleatoric Description Logic
 for Probabilistic Reasoning" by Tim French and Thomas Smoker.
 """
-from tyche.individuals import Individual, TycheConceptField, TycheRoleField
-from tyche.language import WeightedRoleDistribution, Atom, Concept, Expectation, Role
+from tyche.individuals import Individual, TycheConceptField, TycheRoleField, IdentityIndividual
+from tyche.language import WeightedRoleDistribution, Atom, Concept, Expectation, Role, RoleDistributionEntries
 
 
 class VirusTransmissionIndividual(Individual):
@@ -24,23 +24,15 @@ class VirusTransmissionIndividual(Individual):
         return f"{self.name} (V={self.has_virus}, F={self.has_fever})"
 
 
-class VirusTransmissionIdentityIndividual(Individual):
-    """
-    Represents the id role over an individual. In the future,
-    this will be able to be represented implicitly, although
-    for now it must be explicit.
-    """
-    name: str
-    id: TycheRoleField
-
-    def __init__(self, name: str):
-        super().__init__()
+class VirusTransmissionIdentityIndividual(IdentityIndividual):
+    """ An identity individual over many VirusTransmissionIndividuals. """
+    def __init__(self, name: str, entries: RoleDistributionEntries = None):
+        super().__init__(entries)
         self.name = name
-        self.id = WeightedRoleDistribution()
 
     def __str__(self):
-        individuals = ", ".join([f"{100 * prob:.1f}%: {ctx}" for ctx, prob in self.id])
-        return f"{self.name} {{{individuals}}}"
+        return f"{self.name} {super().__str__()}"
+
 
 
 class VirusTransmissionScenario:
@@ -50,31 +42,23 @@ class VirusTransmissionScenario:
     def __init__(self):
         self.h0 = VirusTransmissionIndividual("Hector_0", 0.0, 0.1)
         self.h1 = VirusTransmissionIndividual("Hector_1", 1.0, 0.6)
-        self.h = VirusTransmissionIdentityIndividual("Hector")
-        self.h.id.add(self.h0, 0.1)
-        self.h.id.add(self.h1, 0.9)
+        self.h = VirusTransmissionIdentityIndividual("Hector", {self.h0: 0.1, self.h1: 0.9})
 
         self.i0 = VirusTransmissionIndividual("Igor_0", 0.0, 0.3)
         self.i1 = VirusTransmissionIndividual("Igor_1", 1.0, 0.8)
-        self.i = VirusTransmissionIdentityIndividual("Igor")
-        self.i.id.add(self.i0, 0.5)
-        self.i.id.add(self.i1, 0.5)
+        self.i = VirusTransmissionIdentityIndividual("Igor", [self.i0, self.i1])
 
         self.j0 = VirusTransmissionIndividual("Julia_0", 0.0, 0.2)
         self.j1 = VirusTransmissionIndividual("Julia_1", 1.0, 0.9)
         self.j = VirusTransmissionIdentityIndividual("Julia")
-        self.j.id.add(self.j0, 0.3)
-        self.j.id.add(self.j1, 0.7)
+        self.j.add(self.j0, 0.3)
+        self.j.add(self.j1, 0.7)
 
         self.individuals = [self.h, self.i, self.j]
 
     def evaluate_for_individuals(self, concept: Concept):
         """ Creates a map from individual names  """
-        results = {}
-        expectation = Expectation("id", concept)
-        for id_individual in self.individuals:
-            results[id_individual.name] = expectation.eval(id_individual)
-        return results
+        return {individual.name: concept.eval(individual) for individual in self.individuals}
 
     def __str__(self):
         """ Prints the current state of the model to the console. """
@@ -87,7 +71,6 @@ if __name__ == "__main__":
     print(model)
 
     print()
-    id_role = Role("id")
     has_fever = Atom("has_fever")
     has_virus = Atom("has_virus")
     has_virus_or_no_fever = has_fever.complement() | has_virus
@@ -98,22 +81,31 @@ if __name__ == "__main__":
 
     print()
     print(f": Observe {has_fever}")
-    model.h.observe(Expectation(id_role, has_fever))
-    model.i.observe(Expectation(id_role, has_fever))
-    model.j.observe(Expectation(id_role, has_fever))
+    model.h.observe(has_fever)
+    model.i.observe(has_fever)
+    model.j.observe(has_fever)
     print(model)
 
     print()
     print(f": Observe {has_virus}")
-    model.h.observe(Expectation(id_role, has_virus))
-    model.i.observe(Expectation(id_role, has_virus))
-    model.j.observe(Expectation(id_role, has_virus))
+    model.h.observe(has_virus)
+    model.i.observe(has_virus)
+    model.j.observe(has_virus)
+    print(model)
+
+    print()
+    not_has_virus = has_virus.complement()
+    model = VirusTransmissionScenario()
+    print(f": Reset model, and observe {not_has_virus}")
+    model.h.observe(not_has_virus)
+    model.i.observe(not_has_virus)
+    model.j.observe(not_has_virus)
     print(model)
 
     print()
     model = VirusTransmissionScenario()
     print(f": Reset model, and observe {has_virus_or_no_fever}")
-    model.h.observe(Expectation(id_role, has_virus_or_no_fever))
-    model.i.observe(Expectation(id_role, has_virus_or_no_fever))
-    model.j.observe(Expectation(id_role, has_virus_or_no_fever))
+    model.h.observe(has_virus_or_no_fever)
+    model.i.observe(has_virus_or_no_fever)
+    model.j.observe(has_virus_or_no_fever)
     print(model)
