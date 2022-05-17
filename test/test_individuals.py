@@ -5,7 +5,7 @@ from tyche.individuals import *
 
 class TestSubIndividual(Individual):
     _y: float
-    z: TycheConcept
+    z: TycheConceptField
 
     def __init__(self, y: float, z: float):
         super().__init__()
@@ -18,8 +18,8 @@ class TestSubIndividual(Individual):
 
 
 class TestIndividual(Individual):
-    x: TycheConcept
-    role_var: TycheRole
+    x: TycheConceptField
+    role_var: TycheRoleField
     sub1: TestSubIndividual
     sub2: TestSubIndividual
     sub1Ratio: float = 0.4

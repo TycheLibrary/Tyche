@@ -9,7 +9,7 @@ from tyche.language import *
 
 
 class Person(Individual):
-    is_male: TycheConcept
+    is_male: TycheConceptField
 
     def __init__(self, name=None, gender=None, age=None):
         super().__init__()
@@ -35,7 +35,7 @@ class Person(Individual):
 
 
 class Student(Person):
-    supervisor: TycheRole
+    supervisor: TycheRoleField
 
     def __init__(self, name=None, gender=None, age=None, gpa=50):
         super().__init__()

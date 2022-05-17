@@ -5,13 +5,12 @@ from typing import TypeVar, Callable, get_type_hints, Final, Type
 
 import numpy as np
 
-from tyche.language import WeightedRoleDistribution, TycheLanguageException, TycheContext, Atom
-
+from tyche.language import WeightedRoleDistribution, TycheLanguageException, TycheContext, Atom, Concept
 
 # Marks instance variables of classes as probabilities that
 # may be accessed by Tyche formulas.
-TycheConcept = TypeVar("TycheConcept", float, int, bool)
-TycheRole = TypeVar("TycheRole", bound=WeightedRoleDistribution)
+TycheConceptField = TypeVar("TycheConceptField", float, int, bool)
+TycheRoleField = TypeVar("TycheRoleField", bound=WeightedRoleDistribution)
 
 
 class TycheIndividualsException(Exception):
@@ -108,7 +107,7 @@ class concept(IndividualPropertyDecorator):
     """
     accessors_key: Final[str] = "_Tyche_concepts"
     functions_key: Final[str] = "_Tyche_concept_functions"
-    var_type_hint: Final[type] = TycheConcept
+    var_type_hint: Final[type] = TycheConceptField
 
     def __init__(self, fn: Callable[[], WeightedRoleDistribution]):
         super().__init__(concept.functions_key, fn)
@@ -128,7 +127,7 @@ class role(IndividualPropertyDecorator):
     """
     accessors_key: Final[str] = "_Tyche_roles"
     functions_key: Final[str] = "_Tyche_role_functions"
-    var_type_hint: Final[type] = TycheRole
+    var_type_hint: Final[type] = TycheRoleField
 
     def __init__(self, fn: Callable[[], WeightedRoleDistribution]):
         super().__init__(role.functions_key, fn)

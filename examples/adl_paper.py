@@ -2,7 +2,7 @@
 This file contains examples from the paper "Aleatoric Description Logic
 for Probabilistic Reasoning" by Tim French and Thomas Smoker.
 """
-from tyche.individuals import Individual, TycheConcept, TycheRole
+from tyche.individuals import Individual, TycheConceptField, TycheRoleField
 from tyche.language import WeightedRoleDistribution, Atom, Concept, Expectation
 
 
@@ -11,8 +11,8 @@ class VirusTransmissionIndividual(Individual):
     An individual from the virus transmission scenario.
     """
     name: str
-    has_virus: TycheConcept
-    has_fever: TycheConcept
+    has_virus: TycheConceptField
+    has_fever: TycheConceptField
 
     def __init__(self, name: str, has_virus: float, has_fever: float):
         super().__init__()
@@ -31,7 +31,7 @@ class VirusTransmissionIdentityIndividual(Individual):
     for now it must be explicit.
     """
     name: str
-    id: TycheRole
+    id: TycheRoleField
 
     def __init__(self, name: str):
         super().__init__()
@@ -100,6 +100,13 @@ if __name__ == "__main__":
     model.h.id.apply_bayes_rule(has_fever)
     model.i.id.apply_bayes_rule(has_fever)
     model.j.id.apply_bayes_rule(has_fever)
+    print(model)
+
+    print()
+    print(f": Observe {has_virus}")
+    model.h.id.apply_bayes_rule(has_virus)
+    model.i.id.apply_bayes_rule(has_virus)
+    model.j.id.apply_bayes_rule(has_virus)
     print(model)
 
     print()
