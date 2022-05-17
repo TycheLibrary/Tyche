@@ -173,11 +173,13 @@ class Individual(TycheContext):
     * Methods can be marked as concepts using the concept decorator.
     * Methods can be marked as roles using the role decorator.
     """
+    name: Optional[str]
     concepts: TycheAccessorStore
     roles: TycheAccessorStore
 
-    def __init__(self):
+    def __init__(self, name: Optional[str] = None):
         super().__init__()
+        self.name = name
         self.concepts = concept.get(type(self))
         self.roles = role.get(type(self))
 
@@ -259,6 +261,23 @@ class Individual(TycheContext):
         else:
             raise Exception(f"Updating of beliefs based upon observations of type {type(concept)} are not supported")
 
+    def __str__(self):
+        # Key-values of concepts.
+        concept_values = [f"{sym}={self.eval_concept(sym):.3f}" for sym in self.concepts.all_symbols]
+
+        # We don't want to list out the entirety of the roles.
+        role_values = []
+        for role_symbol in self.roles.all_symbols:
+            role = self.eval_role(role_symbol)
+            if role.is_empty():
+                role_values.append(f"{role_symbol}=<empty role>")
+            else:
+                role_values.append(f"{role_symbol}=<role of {len(role)}>")
+
+        name = self.name if self.name is not None else ""
+        key_values = ", ".join(concept_values + role_values)
+        return f"{name}({key_values})"
+
 
 class IdentityIndividual(TycheContext):
     """
@@ -268,10 +287,12 @@ class IdentityIndividual(TycheContext):
 
     The None-individual is not supported for identity roles.
     """
+    name: Optional[str]
     _id: TycheRoleField
 
-    def __init__(self, entries: RoleDistributionEntries = None):
+    def __init__(self, *, name: Optional[str] = None, entries: RoleDistributionEntries = None):
         super().__init__()
+        self.name = name
         self._id = WeightedRoleDistribution(entries)
         for ctx in self._id.contexts():
             if ctx is None:
@@ -343,9 +364,10 @@ class IdentityIndividual(TycheContext):
             yield ctx, prob
 
     def __str__(self):
+        name = self.name if self.name is not None else ""
         if self._id.is_empty():
-            return f"{{<empty {type(self).__name__}>}}"
+            return f"{name} {{<empty {type(self).__name__}>}}"
 
-        individual_percentages = [f"{100 * prob:.1f}%: {ctx}" for ctx, prob in self._id]
+        individual_percentages = [f"{100 * prob:.0f}%: {ctx}" for ctx, prob in self._id]
         possible_individuals = ", ".join(individual_percentages)
-        return f"{{{possible_individuals}}}"
+        return f"{name} {{{possible_individuals}}}"
