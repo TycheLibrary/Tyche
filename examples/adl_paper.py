@@ -3,7 +3,7 @@ This file contains examples from the paper "Aleatoric Description Logic
 for Probabilistic Reasoning" by Tim French and Thomas Smoker.
 """
 from tyche.individuals import Individual, TycheConceptField, TycheRoleField
-from tyche.language import WeightedRoleDistribution, Atom, Concept, Expectation
+from tyche.language import WeightedRoleDistribution, Atom, Concept, Expectation, Role
 
 
 class VirusTransmissionIndividual(Individual):
@@ -87,6 +87,7 @@ if __name__ == "__main__":
     print(model)
 
     print()
+    id_role = Role("id")
     has_fever = Atom("has_fever")
     has_virus = Atom("has_virus")
     has_virus_or_no_fever = has_fever.complement() | has_virus
@@ -97,22 +98,22 @@ if __name__ == "__main__":
 
     print()
     print(f": Observe {has_fever}")
-    model.h.id.apply_bayes_rule(has_fever)
-    model.i.id.apply_bayes_rule(has_fever)
-    model.j.id.apply_bayes_rule(has_fever)
+    model.h.observe(Expectation(id_role, has_fever))
+    model.i.observe(Expectation(id_role, has_fever))
+    model.j.observe(Expectation(id_role, has_fever))
     print(model)
 
     print()
     print(f": Observe {has_virus}")
-    model.h.id.apply_bayes_rule(has_virus)
-    model.i.id.apply_bayes_rule(has_virus)
-    model.j.id.apply_bayes_rule(has_virus)
+    model.h.observe(Expectation(id_role, has_virus))
+    model.i.observe(Expectation(id_role, has_virus))
+    model.j.observe(Expectation(id_role, has_virus))
     print(model)
 
     print()
     model = VirusTransmissionScenario()
     print(f": Reset model, and observe {has_virus_or_no_fever}")
-    model.h.id.apply_bayes_rule(has_virus_or_no_fever)
-    model.i.id.apply_bayes_rule(has_virus_or_no_fever)
-    model.j.id.apply_bayes_rule(has_virus_or_no_fever)
+    model.h.observe(Expectation(id_role, has_virus_or_no_fever))
+    model.i.observe(Expectation(id_role, has_virus_or_no_fever))
+    model.j.observe(Expectation(id_role, has_virus_or_no_fever))
     print(model)

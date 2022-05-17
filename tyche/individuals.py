@@ -1,14 +1,16 @@
 """
 Provides convenience classes for setting up a model using classes.
 """
-from typing import TypeVar, Callable, get_type_hints, Final, Type
+from typing import TypeVar, Callable, get_type_hints, Final, Type, cast, Generic
 
 import numpy as np
 
-from tyche.language import WeightedRoleDistribution, TycheLanguageException, TycheContext, Atom, Concept
+from tyche.language import WeightedRoleDistribution, TycheLanguageException, TycheContext, Atom, Concept, Expectation
 
 # Marks instance variables of classes as probabilities that
 # may be accessed by Tyche formulas.
+from tyche.reference import MutableReference, MutableVariableReference, GuardedMutableReference
+
 TycheConceptField = TypeVar("TycheConceptField", float, int, bool)
 TycheRoleField = TypeVar("TycheRoleField", bound=WeightedRoleDistribution)
 
@@ -21,7 +23,10 @@ class TycheIndividualsException(Exception):
         self.message = "TycheIndividualsException: " + message
 
 
-class TycheAccessorStore:
+AccessedValueType = TypeVar("AccessedValueType")
+
+
+class TycheAccessorStore(Generic[AccessedValueType]):
     """
     Stores a set of ways to access concepts or roles from a Tyche individual.
     """
@@ -31,7 +36,7 @@ class TycheAccessorStore:
         self.functions = functions
         self.all_symbols = variables.union(functions)
 
-    def get(self, obj: any, symbol: str):
+    def get(self, obj: any, symbol: str) -> AccessedValueType:
         """ Accesses the given symbol from the given object. """
         if symbol in self.variables:
             return getattr(obj, symbol)
@@ -42,10 +47,25 @@ class TycheAccessorStore:
                 self.type_name, symbol, type(obj).__key__
             ))
 
+    def get_mutable(self, obj: any, symbol: str) -> MutableReference[AccessedValueType, AccessedValueType]:
+        """ Accesses the given symbol from the given object. """
+        if symbol in self.variables:
+            return MutableVariableReference(obj, symbol)
+        elif symbol in self.functions:
+            raise TycheLanguageException(
+                f"The {self.type_name} {symbol} for type {type(obj).__key__} is not mutable. "
+                f"It is a function, not a variable"
+            )
+        else:
+            raise TycheLanguageException("Unknown {} {} for type {}".format(
+                self.type_name, symbol, type(obj).__key__
+            ))
+
     @staticmethod
-    def get_or_populate_for(obj_type: type, accessors_key: str,
-                            type_name: str, functions_key: str,
-                            var_type_hint: type) -> 'TycheAccessorStore':
+    def get_or_populate_for(
+            obj_type: type, accessors_key: str,
+            type_name: str, functions_key: str,
+            var_type_hint: type) -> 'TycheAccessorStore':
 
         """ Gets or populates the set of accessors associated with obj_type, and returns them. """
         existing_accessors = getattr(obj_type, accessors_key, None)
@@ -168,20 +188,20 @@ class Individual(TycheContext):
     def get_role_names(obj_type: Type['Individual']) -> set[str]:
         return role.get(obj_type).all_symbols
 
-    def eval_concept(self, symbol: str) -> float:
-        value = self.concepts.get(self, symbol)
+    @classmethod
+    def coerce_concept_value(cls: type, value: any) -> float:
+        """
+        Coerces concept values to a float value in the range [0, 1],
+        and raises errors if this is not possible.
+        """
         if np.isscalar(value):
             if value < 0:
                 raise TycheIndividualsException(
-                    "The {} context {} evaluated the concept {} to a value less than 0".format(
-                        type(self).__name__, self, symbol
-                    )
+                    f"Error in {cls.__name__}: Concept values must be >= to 0, not {value}"
                 )
             if value > 1:
                 raise TycheIndividualsException(
-                    "The {} context {} evaluated the concept {} to a value greater than 1".format(
-                        type(self).__name__, self, symbol
-                    )
+                    f"Error in {cls.__name__}: Concept values must be <= to 1, not {value}"
                 )
 
             return float(value)
@@ -190,22 +210,53 @@ class Individual(TycheContext):
             return 1 if value else 0
 
         raise TycheIndividualsException(
-            "The {} context {} evaluated the concept {} to the {} {}. Expected a float, int, or bool".format(
-                type(self).__name__, self, symbol, type(value).__name__, value
-            )
+            f"Error in {cls.__name__}: Concept values be of type float, int or bool, not {type(value).__name__}"
         )
 
-    def eval_role(self, symbol: str) -> WeightedRoleDistribution:
-        value = self.roles.get(self, symbol)
+    def eval_concept(self, symbol: str) -> float:
+        value = self.concepts.get(self, symbol)
+        return self.coerce_concept_value(value)
+
+    def eval_mutable_concept(self, symbol: str) -> MutableReference[float, float]:
+        ref = self.concepts.get_mutable(self, symbol)
+        return GuardedMutableReference(ref, self.coerce_concept_value, self.coerce_concept_value)
+
+    @classmethod
+    def coerce_role_value(cls: type, value: any) -> WeightedRoleDistribution:
+        """
+        Coerces role values to only allow WeightedRoleDistribution.
+        In the future, this should accept other types of role distributions.
+        """
         if isinstance(value, WeightedRoleDistribution):
             return value
 
         raise TycheIndividualsException(
-            "The {} context {} evaluated the role {} to the {} {}. "
-            "Expected an instance of WeightedRoleDistribution".format(
-                type(self).__name__, self, symbol, type(value).__name__, value
-            )
+            f"Error in {cls.__name__}: Role values must be of type "
+            f"WeightedRoleDistribution, not {type(value).__name__}"
         )
+
+    def eval_role(self, symbol: str) -> WeightedRoleDistribution:
+        value = self.roles.get(self, symbol)
+        return self.coerce_role_value(value)
+
+    def eval_mutable_role(self, symbol: str) -> MutableReference[WeightedRoleDistribution, WeightedRoleDistribution]:
+        ref = self.roles.get_mutable(self, symbol)
+        return GuardedMutableReference(ref, self.coerce_role_value, self.coerce_role_value)
+
+    def observe(self, concept: Concept):
+        """
+        Attempts to update the beliefs of this individual based upon
+        an observation of the given concept.
+        """
+        if isinstance(concept, Expectation):
+            # If an expectation over a role is observed, then we can simply apply Bayes' rule.
+            expectation: Expectation = cast(Expectation, concept)
+            observed_role_ref = expectation.role.eval_mutable(self)
+            curr_role_value = observed_role_ref.get()
+            new_role_value = curr_role_value.apply_bayes_rule(expectation.concept)
+            observed_role_ref.set(new_role_value)
+        else:
+            raise Exception(f"Updating of beliefs based upon observations of type {type(concept)} are not supported")
 
 
 class IdRoleGovernedIndividual(TycheContext):

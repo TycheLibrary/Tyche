@@ -6,6 +6,8 @@ ADL is designed to support both mathematical notion and a formal english notion.
 """
 from typing import Final, cast, TypeVar, Optional
 
+from tyche.reference import MutableReference
+
 
 class TycheLanguageException(Exception):
     """
@@ -22,16 +24,20 @@ class WeightedRoleDistribution:
     represent their likelihood of being selected. The probability
     of selecting an item is fixed at 100%.
     """
-    def __init__(self):
-        self.entries: list[tuple[Optional['TycheContext'], float]] = []
-        self.total_weight = 0
+    def __init__(self, *, entries: list[tuple[Optional['TycheContext'], float]] = None):
+        self.entries: list[tuple[Optional['TycheContext'], float]] = [] if entries is None else entries
+
+    @property
+    def total_weight(self):
+        """ The sum of the weights of all entries in this role distribution. """
+        total = 0
+        for _, weight in self.entries:
+            total += weight
+        return total
 
     def clear(self):
-        """
-        Removes all individuals from this distribution.
-        """
+        """ Removes all individuals from this distribution. """
         self.entries = []
-        self.total_weight = 0
 
     def _index_of(self, individual: Optional['TycheContext']):
         for index, (ctx, _) in enumerate(self.entries):
@@ -44,12 +50,6 @@ class WeightedRoleDistribution:
         Returns whether this role distribution contains the given individual.
         """
         return self._index_of(individual) is not None
-
-    def _update_total_weight(self):
-        total = 0
-        for _, weight in self.entries:
-            total += weight
-        self.total_weight = total
 
     def add(self, individual: Optional['TycheContext'], weight: float = 1):
         """
@@ -71,8 +71,6 @@ class WeightedRoleDistribution:
         else:
             self.entries.append(entry)
 
-        self._update_total_weight()
-
     def remove(self, individual: Optional['TycheContext']):
         """
         Removes the given individual from this distribution.
@@ -82,7 +80,6 @@ class WeightedRoleDistribution:
             return
 
         del self.entries[existing_index]
-        self._update_total_weight()
 
     def __iter__(self):
         """
@@ -101,20 +98,21 @@ class WeightedRoleDistribution:
         for context, weight in self.entries:
             yield context, weight / total_weight
 
-    def apply_bayes_rule(self, observation: 'Concept'):
+    def apply_bayes_rule(self, observation: 'Concept') -> 'WeightedRoleDistribution':
         """
         Applies Bayes' rule to update the probabilities of the individuals
         mapped within this role based upon an observation. This cannot
-        learn anything about the None individual.
+        learn anything about the None individual. Returns an updated
+        role distribution.
         """
         total_weight = self.total_weight
         if total_weight == 0:
             # If there are no entries, then we can't learn anything.
-            return
+            return self
 
         role_belief: float = Expectation.evaluate_for_role(self, observation)
 
-        learned_entries = []
+        learned_entries: list[tuple[Optional['TycheContext'], float]] = []
         for context, weight in self.entries:
             if context is None:
                 # Can't learn the null-individual
@@ -125,9 +123,7 @@ class WeightedRoleDistribution:
             new_weight = weight * belief / role_belief
             learned_entries.append((context, new_weight))
 
-        self.entries = learned_entries
-        # Shouldn't have changed except due to floating-point error.
-        self._update_total_weight()
+        return WeightedRoleDistribution(entries=learned_entries)
 
 
 class TycheContext:
@@ -142,6 +138,12 @@ class TycheContext:
 
     def eval_role(self, symbol: str) -> WeightedRoleDistribution:
         raise NotImplementedError("eval_role is unimplemented for " + type(self).__name__)
+
+    def eval_mutable_concept(self, symbol: str) -> MutableReference[float, float]:
+        raise NotImplementedError("eval_mutable_concept is unimplemented for " + type(self).__name__)
+
+    def eval_mutable_role(self, symbol: str) -> MutableReference[WeightedRoleDistribution, WeightedRoleDistribution]:
+        raise NotImplementedError("eval_mutable_role is unimplemented for " + type(self).__name__)
 
 
 class EmptyContext(TycheContext):
@@ -342,6 +344,10 @@ class Atom(Concept):
     def eval(self, context: TycheContext) -> float:
         return context.eval_concept(self.symbol)
 
+    def eval_mutable(self, context: TycheContext) -> MutableReference[float, float]:
+        """ Evaluates to a mutable reference to the value of this atom. """
+        return context.eval_mutable_concept(self.symbol)
+
     def normal_form(self):
         return self
 
@@ -382,6 +388,11 @@ class Role:
 
     def eval(self, context: TycheContext) -> WeightedRoleDistribution:
         return context.eval_role(self.symbol)
+
+    def eval_mutable(
+            self, context: TycheContext) -> MutableReference[WeightedRoleDistribution, WeightedRoleDistribution]:
+        """ Evaluates to a mutable reference to the value of this role. """
+        return context.eval_mutable_role(self.symbol)
 
 
 class Constant(Atom):
@@ -474,6 +485,9 @@ class Expectation(Concept):
     """
     Represents the aleatoric expectation construct.
     """
+    role: Role
+    concept: Concept
+
     def __init__(self, role: CompatibleWithRole, concept: CompatibleWithConcept):
         self.role: Role = Role.cast(role)
         self.concept: Concept = Concept.cast(concept)
