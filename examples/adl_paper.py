@@ -3,7 +3,7 @@ This file contains examples from the paper "Aleatoric Description Logic
 for Probabilistic Reasoning" by Tim French and Thomas Smoker.
 """
 from tyche.individuals import Individual, TycheConcept, TycheRole
-from tyche.language import WeightedRoleDistribution, Atom
+from tyche.language import WeightedRoleDistribution, Atom, Concept, Expectation
 
 
 class VirusTransmissionIndividual(Individual):
@@ -30,15 +30,17 @@ class VirusTransmissionIdentityIndividual(Individual):
     this will be able to be represented implicitly, although
     for now it must be explicit.
     """
+    name: str
     id: TycheRole
 
-    def __init__(self):
+    def __init__(self, name: str):
         super().__init__()
+        self.name = name
         self.id = WeightedRoleDistribution()
 
     def __str__(self):
-        individuals = "\n - ".join([f"{100 * prob:.1f}% for {ctx}" for ctx, prob in self.id])
-        return f"id:\n - {individuals}"
+        individuals = ", ".join([f"{100 * prob:.1f}%: {ctx}" for ctx, prob in self.id])
+        return f"{self.name} {{{individuals}}}"
 
 
 class VirusTransmissionScenario:
@@ -48,35 +50,53 @@ class VirusTransmissionScenario:
     def __init__(self):
         self.h0 = VirusTransmissionIndividual("Hector_0", 0.0, 0.1)
         self.h1 = VirusTransmissionIndividual("Hector_1", 1.0, 0.6)
-        self.h = VirusTransmissionIdentityIndividual()
+        self.h = VirusTransmissionIdentityIndividual("Hector")
         self.h.id.add(self.h0, 0.1)
         self.h.id.add(self.h1, 0.9)
 
         self.i0 = VirusTransmissionIndividual("Igor_0", 0.0, 0.3)
         self.i1 = VirusTransmissionIndividual("Igor_1", 1.0, 0.8)
-        self.i = VirusTransmissionIdentityIndividual()
+        self.i = VirusTransmissionIdentityIndividual("Igor")
         self.i.id.add(self.i0, 0.5)
         self.i.id.add(self.i1, 0.5)
 
         self.j0 = VirusTransmissionIndividual("Julia_0", 0.0, 0.2)
         self.j1 = VirusTransmissionIndividual("Julia_1", 1.0, 0.9)
-        self.j = VirusTransmissionIdentityIndividual()
+        self.j = VirusTransmissionIdentityIndividual("Julia")
         self.j.id.add(self.j0, 0.3)
         self.j.id.add(self.j1, 0.7)
 
+        self.individuals = [self.h, self.i, self.j]
+
+    def evaluate_for_individuals(self, concept: Concept):
+        """ Creates a map from individual names  """
+        results = {}
+        expectation = Expectation("id", concept)
+        for id_individual in self.individuals:
+            results[id_individual.name] = expectation.eval(id_individual)
+        return results
+
     def __str__(self):
         """ Prints the current state of the model to the console. """
-        return "\n".join([str(individual) for individual in [self.h, self.i, self.j]])
+        return "\n".join([str(individual) for individual in self.individuals])
 
 
 if __name__ == "__main__":
     model = VirusTransmissionScenario()
+    print(": Original model")
     print(model)
 
     print()
-    print("Observe Hector, Igor, and Julia with a fever,")
     has_fever = Atom("has_fever")
-    print(f" .. Observing {has_fever} at Hector, Igor, and Julia")
+    has_virus = Atom("has_virus")
+    has_virus_or_no_fever = has_fever.complement() | has_virus
+    print(": Probabilities")
+    print(f"P({has_fever}) = {model.evaluate_for_individuals(has_fever)}")
+    print(f"P({has_virus}) = {model.evaluate_for_individuals(has_virus)}")
+    print(f"P({has_virus_or_no_fever}) = {model.evaluate_for_individuals(has_virus_or_no_fever)}")
+
+    print()
+    print(f": Observe {has_fever}")
     model.h.id.apply_bayes_rule(has_fever)
     model.i.id.apply_bayes_rule(has_fever)
     model.j.id.apply_bayes_rule(has_fever)
@@ -84,10 +104,7 @@ if __name__ == "__main__":
 
     print()
     model = VirusTransmissionScenario()
-    print("Reset model, and observe Hector, Igor, and Julia not having a fever or having the virus,")
-    has_virus = Atom("has_virus")
-    has_virus_or_no_fever = has_fever.complement() | has_virus
-    print(f" .. Observing {has_virus_or_no_fever} at Hector, Igor, and Julia")
+    print(f": Reset model, and observe {has_virus_or_no_fever}")
     model.h.id.apply_bayes_rule(has_virus_or_no_fever)
     model.i.id.apply_bayes_rule(has_virus_or_no_fever)
     model.j.id.apply_bayes_rule(has_virus_or_no_fever)
