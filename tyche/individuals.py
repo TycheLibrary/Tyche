@@ -364,10 +364,10 @@ class IdentityIndividual(TycheContext):
             yield ctx, prob
 
     def __str__(self):
-        name = self.name if self.name is not None else ""
+        name = self.name if f"{self.name} " is not None else ""
         if self._id.is_empty():
-            return f"{name} {{<empty {type(self).__name__}>}}"
+            return f"{name}{{<empty {type(self).__name__}>}}"
 
         individual_percentages = [f"{100 * prob:.0f}%: {ctx}" for ctx, prob in self._id]
         possible_individuals = ", ".join(individual_percentages)
-        return f"{name} {{{possible_individuals}}}"
+        return f"{name}{{{possible_individuals}}}"
