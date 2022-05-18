@@ -5,15 +5,15 @@ from typing import TypeVar, Callable, get_type_hints, Final, Type, cast, Generic
 
 import numpy as np
 
-from tyche.language import WeightedRoleDistribution, TycheLanguageException, TycheContext, Atom, Concept, Expectation, \
-    Role, RoleDistributionEntries
+from tyche.language import ExclusiveRoleDist, TycheLanguageException, TycheContext, Atom, Concept, Expectation, \
+    Role, RoleDistributionEntries, always, CompatibleWithConcept, CompatibleWithRole
 
 # Marks instance variables of classes as probabilities that
 # may be accessed by Tyche formulas.
 from tyche.reference import MutableReference, MutableVariableReference, GuardedMutableReference
 
 TycheConceptField = TypeVar("TycheConceptField", float, int, bool)
-TycheRoleField = TypeVar("TycheRoleField", bound=WeightedRoleDistribution)
+TycheRoleField = TypeVar("TycheRoleField", bound=ExclusiveRoleDist)
 
 
 class TycheIndividualsException(Exception):
@@ -107,7 +107,7 @@ class TycheAccessorStore(Generic[AccessedValueType]):
 
 class IndividualPropertyDecorator:
     """ A decorator to mark methods as providing the value of a concept or role. """
-    def __init__(self, functions_key: str, fn: Callable[[], WeightedRoleDistribution]):
+    def __init__(self, functions_key: str, fn: Callable[[], ExclusiveRoleDist]):
         self.functions_key = functions_key
         self.fn = fn
 
@@ -130,7 +130,7 @@ class concept(IndividualPropertyDecorator):
     functions_key: Final[str] = "_Tyche_concept_functions"
     var_type_hint: Final[type] = TycheConceptField
 
-    def __init__(self, fn: Callable[[], WeightedRoleDistribution]):
+    def __init__(self, fn: Callable[[], ExclusiveRoleDist]):
         super().__init__(concept.functions_key, fn)
 
     @staticmethod
@@ -150,7 +150,7 @@ class role(IndividualPropertyDecorator):
     functions_key: Final[str] = "_Tyche_role_functions"
     var_type_hint: Final[type] = TycheRoleField
 
-    def __init__(self, fn: Callable[[], WeightedRoleDistribution]):
+    def __init__(self, fn: Callable[[], ExclusiveRoleDist]):
         super().__init__(role.functions_key, fn)
 
     @staticmethod
@@ -182,6 +182,12 @@ class Individual(TycheContext):
         self.name = name
         self.concepts = concept.get(type(self))
         self.roles = role.get(type(self))
+
+    def eval(self, concept: CompatibleWithConcept) -> float:
+        return Concept.cast(concept).direct_eval(self)
+
+    def eval_role(self, role: CompatibleWithRole) -> ExclusiveRoleDist:
+        return Role.cast(role).direct_eval(self)
 
     @staticmethod
     def get_concept_names(obj_type: Type['Individual']) -> set[str]:
@@ -216,21 +222,21 @@ class Individual(TycheContext):
             f"Error in {cls.__name__}: Concept values be of type float, int or bool, not {type(value).__name__}"
         )
 
-    def eval_concept(self, symbol: str) -> float:
+    def get_concept(self, symbol: str) -> float:
         value = self.concepts.get(self, symbol)
         return self.coerce_concept_value(value)
 
-    def eval_mutable_concept(self, symbol: str) -> MutableReference[float, float]:
+    def get_mutable_concept(self, symbol: str) -> MutableReference[float, float]:
         ref = self.concepts.get_mutable(self, symbol)
         return GuardedMutableReference(ref, self.coerce_concept_value, self.coerce_concept_value)
 
     @classmethod
-    def coerce_role_value(cls: type, value: any) -> WeightedRoleDistribution:
+    def coerce_role_value(cls: type, value: any) -> ExclusiveRoleDist:
         """
         Coerces role values to only allow WeightedRoleDistribution.
         In the future, this should accept other types of role distributions.
         """
-        if isinstance(value, WeightedRoleDistribution):
+        if isinstance(value, ExclusiveRoleDist):
             return value
 
         raise TycheIndividualsException(
@@ -238,11 +244,11 @@ class Individual(TycheContext):
             f"WeightedRoleDistribution, not {type(value).__name__}"
         )
 
-    def eval_role(self, symbol: str) -> WeightedRoleDistribution:
+    def get_role(self, symbol: str) -> ExclusiveRoleDist:
         value = self.roles.get(self, symbol)
         return self.coerce_role_value(value)
 
-    def eval_mutable_role(self, symbol: str) -> MutableReference[WeightedRoleDistribution, WeightedRoleDistribution]:
+    def get_mutable_role(self, symbol: str) -> MutableReference[ExclusiveRoleDist, ExclusiveRoleDist]:
         ref = self.roles.get_mutable(self, symbol)
         return GuardedMutableReference(ref, self.coerce_role_value, self.coerce_role_value)
 
@@ -263,12 +269,12 @@ class Individual(TycheContext):
 
     def __str__(self):
         # Key-values of concepts.
-        concept_values = [f"{sym}={self.eval_concept(sym):.3f}" for sym in self.concepts.all_symbols]
+        concept_values = [f"{sym}={self.get_concept(sym):.3f}" for sym in self.concepts.all_symbols]
 
         # We don't want to list out the entirety of the roles.
         role_values = []
         for role_symbol in self.roles.all_symbols:
-            role = self.eval_role(role_symbol)
+            role = self.get_role(role_symbol)
             if role.is_empty():
                 role_values.append(f"{role_symbol}=<empty role>")
             else:
@@ -286,6 +292,7 @@ class IdentityIndividual(TycheContext):
     over the set of possible individuals in the id role.
 
     The None-individual is not supported for identity roles.
+
     """
     name: Optional[str]
     _id: TycheRoleField
@@ -293,7 +300,7 @@ class IdentityIndividual(TycheContext):
     def __init__(self, *, name: Optional[str] = None, entries: RoleDistributionEntries = None):
         super().__init__()
         self.name = name
-        self._id = WeightedRoleDistribution(entries)
+        self._id = ExclusiveRoleDist(entries)
         for ctx in self._id.contexts():
             if ctx is None:
                 raise TycheIndividualsException("None individuals are not supported by IndividualIdentity")
@@ -324,23 +331,27 @@ class IdentityIndividual(TycheContext):
         """ Removes the given individual from this identity individual. """
         return self._id.remove(individual)
 
-    def eval_concept(self, symbol: str) -> float:
-        self._verify_not_empty()
-        return Expectation.evaluate_for_role(self._id, Atom(symbol))
+    def eval(self, concept: 'Concept') -> float:
+        return Expectation.evaluate_for_role(self._id, concept, always)
 
-    def eval_role(self, symbol: str) -> WeightedRoleDistribution:
+    def eval_role(self, role: 'Role') -> ExclusiveRoleDist:
+        return role.direct_eval(self)
+
+    def get_role(self, symbol: str) -> ExclusiveRoleDist:
         self._verify_not_empty()
         return Expectation.evaluate_role_under_role(self._id, Role(symbol))
 
-    def eval_mutable_concept(self, symbol: str) -> MutableReference[float, float]:
+    def get_concept(self, symbol: str) -> float:
         raise TycheIndividualsException(
-            f"Cannot evaluate mutable concepts for instances of {type(self).__name__}"
-        )
+            f"Cannot evaluate atoms for instances of {type(self).__name__}. eval should be used instead")
 
-    def eval_mutable_role(self, symbol: str) -> MutableReference[WeightedRoleDistribution, WeightedRoleDistribution]:
+    def get_mutable_concept(self, symbol: str) -> MutableReference[float, float]:
         raise TycheIndividualsException(
-            f"Cannot evaluate mutable roles for instances of {type(self).__name__}"
-        )
+            f"Cannot evaluate mutable concepts for instances of {type(self).__name__}")
+
+    def get_mutable_role(self, symbol: str) -> MutableReference[ExclusiveRoleDist, ExclusiveRoleDist]:
+        raise TycheIndividualsException(
+            f"Cannot evaluate mutable roles for instances of {type(self).__name__}")
 
     def observe(self, concept: Concept):
         """

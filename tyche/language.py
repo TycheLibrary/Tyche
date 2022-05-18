@@ -4,7 +4,7 @@ description logic (ADL) formulas.
 
 ADL is designed to support both mathematical notion and a formal english notion.
 """
-from typing import Final, cast, TypeVar, Optional, Union, Tuple
+from typing import Final, cast, Optional, Union, Tuple, NewType
 
 from tyche.reference import MutableReference
 
@@ -24,12 +24,15 @@ RoleDistributionEntries: type = Union[
 ]
 
 
-class WeightedRoleDistribution:
+class ExclusiveRoleDist:
     """
-    Represents a probability distribution of contexts for a role.
+    Represents a probability distribution of contexts for a role,
+    where either zero or one related context can possibly be
+    active at once when observed. The zero in this case refers
+    to the possibility of selecting the None-individual. However,
+    an individual is always active if you include the None-individual.
     The items in the probability distribution use weights to
-    represent their likelihood of being selected. The probability
-    of selecting an item is fixed at 100%.
+    represent their relative likelihood of being selected.
     """
     def __init__(self, entries: RoleDistributionEntries = None):
         self._entries: list[tuple[Optional['TycheContext'], float]] = []
@@ -135,6 +138,36 @@ class WeightedRoleDistribution:
         for ctx, _ in self._entries:
             yield ctx
 
+    def apply_bayes_rule(self, observation: 'Concept') -> 'ExclusiveRoleDist':
+        """
+        Applies Bayes' rule to update the probabilities of the individuals
+        mapped within this role based upon an observation. This cannot
+        learn anything about the None individual. Returns an updated
+        role distribution.
+        """
+        total_weight = self.total_weight
+        if total_weight == 0:
+            # If there are no entries, then we can't learn anything.
+            return self
+
+        role_belief: float = Expectation.evaluate_for_role(self, observation, always)
+        if role_belief == 0:
+            raise TycheLanguageException("Observation is impossible within model")
+
+        learned_entries: list[tuple[Optional['TycheContext'], float]] = []
+        for context, weight in self._entries:
+            if context is None:
+                # Can't learn the null-individual
+                learned_entries.append((context, weight))
+                continue
+
+            belief = context.eval(observation)
+            new_weight = weight * belief / role_belief
+            if new_weight > 0:
+                learned_entries.append((context, new_weight))
+
+        return ExclusiveRoleDist(learned_entries)
+
     def __len__(self):
         """ Returns the number of entries in this role, including the None role if it is present. """
         return max(1, len(self._entries))
@@ -156,35 +189,20 @@ class WeightedRoleDistribution:
         for context, weight in self._entries:
             yield context, weight / total_weight
 
-    def apply_bayes_rule(self, observation: 'Concept') -> 'WeightedRoleDistribution':
-        """
-        Applies Bayes' rule to update the probabilities of the individuals
-        mapped within this role based upon an observation. This cannot
-        learn anything about the None individual. Returns an updated
-        role distribution.
-        """
-        total_weight = self.total_weight
-        if total_weight == 0:
-            # If there are no entries, then we can't learn anything.
-            return self
+    def __str__(self):
+        if self.is_empty():
+            return f"{{<empty {type(self).__name__}>}}"
 
-        role_belief: float = Expectation.evaluate_for_role(self, observation)
-        if role_belief == 0:
-            raise TycheLanguageException("Observation is impossible within model")
+        context_percentages = [f"{100 * prob:.1f}%: {ctx}" for ctx, prob in self]
+        possible_contexts = ", ".join(context_percentages)
+        return f"{{{possible_contexts}}}"
 
-        learned_entries: list[tuple[Optional['TycheContext'], float]] = []
-        for context, weight in self._entries:
-            if context is None:
-                # Can't learn the null-individual
-                learned_entries.append((context, weight))
-                continue
 
-            belief = observation.eval(context)
-            new_weight = weight * belief / role_belief
-            if new_weight > 0:
-                learned_entries.append((context, new_weight))
-
-        return WeightedRoleDistribution(learned_entries)
+# This is used to allow passing names (e.g. "x", "y", etc...) directly
+# to functions that require a concept or role. These names will then
+# automatically be converted to an Atom or Role object.
+CompatibleWithConcept: type = NewType("CompatibleWithConcept", Union['Concept', str])
+CompatibleWithRole: type = NewType("CompatibleWithRole", Union['Role', str])
 
 
 class TycheContext:
@@ -194,16 +212,46 @@ class TycheContext:
     Each individual may supply their own context for
     their variables and roles.
     """
-    def eval_concept(self, symbol: str) -> float:
-        raise NotImplementedError("eval_concept is unimplemented for " + type(self).__name__)
+    def eval(self, concept: 'CompatibleWithConcept') -> float:
+        """
+        Evaluates the given concept to a probability of
+        it being true if sampled within this context.
+        """
+        raise NotImplementedError("eval is unimplemented for " + type(self).__name__)
 
-    def eval_role(self, symbol: str) -> WeightedRoleDistribution:
+    def eval_role(self, role: 'CompatibleWithRole') -> ExclusiveRoleDist:
+        """
+        Evaluates the given role to a distribution of possible
+        other contexts if it were sampled within this context.
+        """
         raise NotImplementedError("eval_role is unimplemented for " + type(self).__name__)
 
-    def eval_mutable_concept(self, symbol: str) -> MutableReference[float, float]:
+    def get_concept(self, symbol: str) -> float:
+        """
+        Gets the probability of the atom with the given symbol
+        being true, without modification by the context.
+        """
+        raise NotImplementedError("eval_concept is unimplemented for " + type(self).__name__)
+
+    def get_role(self, symbol: str) -> ExclusiveRoleDist:
+        """
+        Gets the role distribution of the role with the
+        given symbol, without modification by the context.
+        """
+        raise NotImplementedError("eval_role is unimplemented for " + type(self).__name__)
+
+    def get_mutable_concept(self, symbol: str) -> MutableReference[float, float]:
+        """
+        Gets a mutable reference to the probability of the atom with the given symbol
+        being true. This reference can be used to get and set the value of the atom.
+        """
         raise NotImplementedError("eval_mutable_concept is unimplemented for " + type(self).__name__)
 
-    def eval_mutable_role(self, symbol: str) -> MutableReference[WeightedRoleDistribution, WeightedRoleDistribution]:
+    def get_mutable_role(self, symbol: str) -> MutableReference[ExclusiveRoleDist, ExclusiveRoleDist]:
+        """
+        Gets a mutable reference to the role distribution of the role with the
+        given symbol. This reference can be used to get and set the value of the role.
+        """
         raise NotImplementedError("eval_mutable_role is unimplemented for " + type(self).__name__)
 
 
@@ -211,18 +259,23 @@ class EmptyContext(TycheContext):
     """
     Provides an empty context for evaluating constant expressions.
     """
-    def eval_concept(self, symbol: str) -> float:
+    def eval(self, concept: 'Concept') -> float:
+        return concept.direct_eval(self)
+
+    def eval_role(self, role: 'Role') -> ExclusiveRoleDist:
+        return role.direct_eval(self)
+
+    def get_concept(self, symbol: str) -> float:
         raise TycheLanguageException("Unknown atom {}".format(symbol))
 
-    def eval_role(self, symbol: str) -> WeightedRoleDistribution:
+    def get_role(self, symbol: str) -> ExclusiveRoleDist:
         raise TycheLanguageException("Unknown role {}".format(symbol))
 
+    def get_mutable_concept(self, symbol: str) -> float:
+        raise TycheLanguageException("Unknown atom {}".format(symbol))
 
-# This is used to allow passing names (e.g. "x", "y", etc...) directly
-# to functions that require a concept or role. These names will then
-# automatically be converted to an Atom or Role object.
-CompatibleWithConcept: type = TypeVar("CompatibleWithConcept", 'Concept', str)
-CompatibleWithRole: type = TypeVar("CompatibleWithRole", 'Role', str)
+    def get_mutable_role(self, symbol: str) -> ExclusiveRoleDist:
+        raise TycheLanguageException("Unknown role {}".format(symbol))
 
 
 class Concept:
@@ -271,16 +324,17 @@ class Concept:
         """
         raise NotImplementedError("__lt__ is unimplemented for " + type(self).__name__)
 
-    def eval(self, context: TycheContext) -> float:
+    def direct_eval(self, context: TycheContext) -> float:
         """
-        returns the probability of this concept,
-        given the lambda evaluation of roles and concepts.
-        It is assumed concepts is a function that
-        maps concept symbols to probabilities,
-        and roles is a function that maps role symbols
-        to probability distributions of tuples of concept functions and role functions
+        Disclaimer:
+        This should _NOT_ be called to evaluate concepts about your model, as the
+        TycheContext objects should be given the option to change the method of
+        evaluation. Therefore, TycheContext#eval should usually be used instead.
+
+        Evaluates the probability of this concept evaluating to true when sampled
+        using the values of atoms and roles from the given context.
         """
-        raise NotImplementedError("eval is unimplemented for " + type(self).__name__)
+        raise NotImplementedError("direct_eval is unimplemented for " + type(self).__name__)
 
     def normal_form(self) -> 'Concept':
         """
@@ -324,20 +378,20 @@ class Concept:
         """
         return ConditionalWithoutElse(condition, self)
 
-    def complement(self):
+    def complement(self) -> 'Concept':
         """
         inline negation operator
         """
         return never.when(self).otherwise(always)
 
-    def __and__(self, concept):
+    def __and__(self, concept) -> 'Concept':
         """
         inline conjunction operator,
         note ordering for lazy evaluation
         """
         return concept.when(self).otherwise(never)
 
-    def __or__(self, concept):
+    def __or__(self, concept) -> 'Concept':
         """
         inline disjunction operator
         """
@@ -402,12 +456,12 @@ class Atom(Concept):
     def __lt__(self, other) -> bool:
         raise TycheLanguageException("not yet implemented")
 
-    def eval(self, context: TycheContext) -> float:
-        return context.eval_concept(self.symbol)
+    def direct_eval(self, context: TycheContext) -> float:
+        return context.get_concept(self.symbol)
 
     def eval_mutable(self, context: TycheContext) -> MutableReference[float, float]:
         """ Evaluates to a mutable reference to the value of this atom. """
-        return context.eval_mutable_concept(self.symbol)
+        return context.get_mutable_concept(self.symbol)
 
     def normal_form(self):
         return self
@@ -447,13 +501,13 @@ class Role:
     def __eq__(self, other) -> bool:
         return type(self) == type(other) and self.symbol == cast('Atom', other).symbol
 
-    def eval(self, context: TycheContext) -> WeightedRoleDistribution:
-        return context.eval_role(self.symbol)
+    def direct_eval(self, context: TycheContext) -> ExclusiveRoleDist:
+        return context.get_role(self.symbol)
 
     def eval_mutable(
-            self, context: TycheContext) -> MutableReference[WeightedRoleDistribution, WeightedRoleDistribution]:
+            self, context: TycheContext) -> MutableReference[ExclusiveRoleDist, ExclusiveRoleDist]:
         """ Evaluates to a mutable reference to the value of this role. """
-        return context.eval_mutable_role(self.symbol)
+        return context.get_mutable_role(self.symbol)
 
 
 class Constant(Atom):
@@ -464,7 +518,7 @@ class Constant(Atom):
         super().__init__(symbol, special_symbol=True)
         self.probability = probability
 
-    def eval(self, context: TycheContext) -> float:
+    def direct_eval(self, context: TycheContext) -> float:
         return self.probability
 
 
@@ -514,10 +568,10 @@ class Conditional(Concept):
     def __lt__(self, obj):
         raise TycheLanguageException("not yet implemented")
 
-    def eval(self, context: TycheContext):
-        cond = self.condition.eval(context)
-        if_yes = self.if_yes.eval(context)
-        if_no = self.if_no.eval(context)
+    def direct_eval(self, context: TycheContext):
+        cond = context.eval(self.condition)
+        if_yes = context.eval(self.if_yes)
+        if_no = context.eval(self.if_no)
         return cond * if_yes + (1 - cond) * if_no
 
     def normal_form(self):
@@ -544,69 +598,82 @@ class ConditionalWithoutElse(Conditional):
 
 class Expectation(Concept):
     """
-    Represents the aleatoric expectation construct.
+    Represents the aleatoric expectation construct,
+    'The expectation that concept is true for an individual selected randomly
+    from the given role, given that the individual evaluates given to true'.
+    If given is not given, then it defaults to always.
     """
     role: Role
     concept: Concept
+    given: Concept
 
-    def __init__(self, role: CompatibleWithRole, concept: CompatibleWithConcept):
+    def __init__(
+            self,
+            role: CompatibleWithRole,
+            concept: CompatibleWithConcept,
+            given: Optional[CompatibleWithConcept] = None):
+
         self.role: Role = Role.cast(role)
         self.concept: Concept = Concept.cast(concept)
+        self.given = Concept.cast(given) if given is not None else always
 
     def __str__(self):
-        return "(\U0001D53C_{}. {})".format(str(self.role), str(self.concept))
+        if self.given == always:
+            return f"(\U0001D53C_{str(self.role)}. {str(self.concept)})"
+        else:
+            return f"(\U0001D53C_{str(self.role)}. {str(self.concept)} | {str(self.given)})"
 
     def __repr__(self):
-        return "Expectation(role={}, concept={})".format(repr(self.role), repr(self.concept))
+        return f"Expectation(role={repr(self.role)}, concept={repr(self.concept)}, given={repr(self.given)})"
 
     def __eq__(self, obj):
         if type(obj) != type(self):
             return False
 
         other: 'Expectation' = cast('Expectation', obj)
-        return self.role == other.role and self.concept == other.concept
+        return self.role == other.role and self.concept == other.concept and self.given == other.given
 
     @staticmethod
-    def evaluate_role_under_role(outer_role: WeightedRoleDistribution, inner_role: Role) -> WeightedRoleDistribution:
+    def evaluate_role_under_role(outer_role: ExclusiveRoleDist, inner_role: Role) -> ExclusiveRoleDist:
         """
         Evaluates the expected role over a given set of roles. The chance
         of the contexts in the returned role represents the chance that
         the context is selected from an inner_role selected from outer_role.
         """
-        result = WeightedRoleDistribution()
+        result = ExclusiveRoleDist()
         for outer_context, outer_prob in outer_role:
             if outer_context is None:
                 result.add_combining_weights(None, outer_prob)
                 continue
 
-            for inner_context, inner_prob in inner_role.eval(outer_context):
+            for inner_context, inner_prob in outer_context.get_role(inner_role):
                 result.add_combining_weights(inner_context, outer_prob * inner_prob)
 
         return result
 
     @staticmethod
-    def evaluate_for_role(role: WeightedRoleDistribution, concept: Concept) -> float:
+    def evaluate_for_role(role: ExclusiveRoleDist, concept: Concept, given: Concept) -> float:
         """
         Evaluates this expectation over the given role, without requiring a context.
         This evaluation contains an implicit given that the role is non-None. If the
         role only contains None, then this will evaluate to vacuously True.
         """
         total_prob = 0.0
-        prob_weight = 1.0
+        total_given_prob = 0.0
+        concept_and_given = concept & given
         for other_context, prob in role:
-            if other_context is None:
-                prob_weight = 1.0 - prob
-            else:
-                total_prob += prob * concept.eval(other_context)
+            if other_context is not None:
+                total_prob += prob * other_context.eval(concept_and_given)
+                total_given_prob += prob * other_context.eval(given)
 
-        # Vacuously True if only None in role.
-        if prob_weight == 0:
+        # Vacuously True if only None in role, or if all givens evaluated to never.
+        if total_given_prob == 0:
             return 1
 
         # Division for the implicit given non-None.
-        return total_prob / prob_weight
+        return total_prob / total_given_prob
 
-    def eval(self, context: TycheContext):
+    def direct_eval(self, context: TycheContext):
         """
         Evaluates the concept for all members of the role mapping
         from the given context to other contexts. This evaluation
@@ -614,7 +681,7 @@ class Expectation(Concept):
         If the role only contains None, then this will evaluate
         to vacuously True.
         """
-        return Expectation.evaluate_for_role(self.role.eval(context), self.concept)
+        return Expectation.evaluate_for_role(context.eval_role(self.role), self.concept, self.given)
 
 
 class Exists(Concept):
@@ -638,18 +705,18 @@ class Exists(Concept):
         other: 'Exists' = cast('Exists', obj)
         return self.role == other.role
 
-    def eval(self, context: TycheContext):
+    def direct_eval(self, context: TycheContext):
         """
         Evaluates the likelihood that the given role has a non-None value.
         """
         exists_weight = 0
-        for other_context, prob in self.role.eval(context):
+        for other_context, prob in context.eval_role(self.role):
             if other_context is None:
                 return 1.0 - prob
             else:
                 exists_weight += prob
 
-        # Vacuous True if no entries in role.
+        # Vacuous False if no entries in role.
         if exists_weight == 0:
             return 0.0
 
@@ -694,7 +761,7 @@ class LeastFixedPoint(Concept):
     def __lt__(self, other):
         raise TycheLanguageException("not yet implemented")
 
-    def eval(self, context: TycheContext):
+    def direct_eval(self, context: TycheContext):
         """
         Complex one, needs iteration or equation solving.
         """

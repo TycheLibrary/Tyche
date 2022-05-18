@@ -40,7 +40,7 @@ class Student(Person):
     def __init__(self, name=None, gender=None, age=None, gpa=50):
         super().__init__()
         self.gpa = NormalDist(60, 10).truncate(0, 100)
-        self.supervisor = WeightedRoleDistribution()
+        self.supervisor = ExclusiveRoleDist()
 
     @concept
     def student(self) -> float:

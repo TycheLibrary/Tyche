@@ -69,17 +69,17 @@ class TestLanguage(unittest.TestCase):
         context = EmptyContext()
         flip = Constant("flip", 0.5)
 
-        self.assertEqual(1, always.eval(context))
-        self.assertEqual(0.5, flip.eval(context))
-        self.assertEqual(0, never.eval(context))
+        self.assertEqual(1, context.eval(always))
+        self.assertEqual(0.5, context.eval(flip))
+        self.assertEqual(0, context.eval(never))
 
-        self.assertEqual(1, (always | never).eval(context))
-        self.assertEqual(0, (always & never).eval(context))
-        self.assertEqual(1, (always | flip).eval(context))
-        self.assertAlmostEqual(0.5, (never | flip).eval(context))
-        self.assertAlmostEqual(0.5 * 0.5, (flip & flip).eval(context))
-        self.assertAlmostEqual(0.5 * 0.5, ((flip & flip) | (never & flip)).eval(context))
+        self.assertEqual(1, context.eval(always | never))
+        self.assertEqual(0, context.eval(always & never))
+        self.assertEqual(1, context.eval(always | flip))
+        self.assertAlmostEqual(0.5, context.eval(never | flip))
+        self.assertAlmostEqual(0.5 * 0.5, context.eval(flip & flip))
+        self.assertAlmostEqual(0.5 * 0.5, context.eval((flip & flip) | (never & flip)))
         self.assertAlmostEqual(
             1 - ((1 - 0.5 * 0.5) * (1 - 1 * 0.5)),
-            ((flip & flip) | (always & flip)).eval(context)
+            context.eval((flip & flip) | (always & flip))
         )
