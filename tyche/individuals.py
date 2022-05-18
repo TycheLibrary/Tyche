@@ -31,6 +31,11 @@ class TycheAccessorStore(Generic[AccessedValueType]):
     """
     Stores a set of ways to access concepts or roles from a Tyche individual.
     """
+    # Stores all the accessors for atoms & roles of Individual subclass types.
+    __accessor_maps: Final[dict[type, dict[type, 'TycheAccessorStore']]] = {}
+    # Stores all the accessors function names for atoms & roles of Individual subclass types.
+    __accessor_function_maps: Final[dict[type, dict[type, set[str]]]] = {}
+
     def __init__(self, type_name: str, variables: set[str], functions: set[str]):
         self.type_name = type_name
         self.variables = variables
@@ -63,26 +68,48 @@ class TycheAccessorStore(Generic[AccessedValueType]):
             ))
 
     @staticmethod
-    def get_or_populate_for(
-            obj_type: type, accessors_key: str,
-            type_name: str, functions_key: str,
-            var_type_hint: type) -> 'TycheAccessorStore':
+    def get_accessors_map(accessor_type: type) -> dict[type, 'TycheAccessorStore']:
+        """ Returns a map from Individual subclass types to their accessor stores for the given type of accessors. """
+        accessor_maps = TycheAccessorStore.__accessor_maps
+        if accessor_type not in accessor_maps:
+            accessor_maps[accessor_type] = {}
+        return accessor_maps[accessor_type]
 
-        """ Gets or populates the set of accessors associated with obj_type, and returns them. """
-        existing_accessors = getattr(obj_type, accessors_key, None)
-        if existing_accessors is not None:
-            return existing_accessors
+    @staticmethod
+    def get_accessor_functions_map(accessor_type: type) -> dict[type, set[str]]:
+        """ Returns a map from Individual subclass types to their accessor stores for the given type of accessors. """
+        accessor_function_maps = TycheAccessorStore.__accessor_function_maps
+        if accessor_type not in accessor_function_maps:
+            accessor_function_maps[accessor_type] = {}
+        return accessor_function_maps[accessor_type]
 
-        # Find the set of function and variable symbols.
-        functions: set[str] = getattr(obj_type, functions_key, set())
+    @staticmethod
+    def get_or_populate_for(obj_type: type, accessor_type: type, field_type_hint: type) -> 'TycheAccessorStore':
+        """
+        Gets or populates the set of accessors associated with obj_type, and returns them.
+        """
+        accessor_map = TycheAccessorStore.get_accessors_map(accessor_type)
+        if obj_type in accessor_map:
+            return accessor_map[obj_type]
+
+        # Get the set of functions that can be called on objects of obj_type.
+        # We need to get the functions of all the type's parent classes as well.
+        functions: set[str] = set()
+        functions_map = TycheAccessorStore.get_accessor_functions_map(accessor_type)
+        for method_resolution_type in obj_type.mro():
+            if method_resolution_type in functions_map:
+                functions.update(functions_map[method_resolution_type])
+
+        # Get the set of variables that can be accessed from obj_type.
+        # These include the fields from parent classes automatically.
         variables: set[str] = set()
         for symbol, type_hint in get_type_hints(obj_type).items():
-            if type_hint == var_type_hint:
+            if type_hint == field_type_hint:
                 variables.add(symbol)
                 if symbol in functions:
                     raise TycheIndividualsException(
                         "The {} {} in type {} cannot be provided as both a variable and a function".format(
-                            type_name, symbol, obj_type.__name__
+                            accessor_type.__name__, symbol, obj_type.__name__
                         ))
 
         # Check that there are no duplicate names.
@@ -94,29 +121,29 @@ class TycheAccessorStore(Generic[AccessedValueType]):
 
         # Check that all the symbol names are valid.
         for symbol_name, name_set in [("variable", variables), ("method", functions)]:
-            symbol_type_name = type_name.capitalize()
+            symbol_type_name = accessor_type.__name__.capitalize()
             context = "type {}".format(obj_type.__name__)
             for name in name_set:
                 Atom.check_symbol(name, symbol_name=symbol_name, symbol_type_name=symbol_type_name, context=context)
 
         # Store the accessors in the type object.
-        accessors = TycheAccessorStore(type_name, variables, functions)
-        setattr(obj_type, accessors_key, accessors)
+        accessors = TycheAccessorStore(accessor_type.__name__, variables, functions)
+        accessor_map[obj_type] = accessors
         return accessors
 
 
 class IndividualPropertyDecorator:
     """ A decorator to mark methods as providing the value of a concept or role. """
-    def __init__(self, functions_key: str, fn: Callable[[], ExclusiveRoleDist]):
-        self.functions_key = functions_key
+    def __init__(self, fn: Callable[[], ExclusiveRoleDist]):
         self.fn = fn
 
-    def __set_name__(self, owner, name):
-        if not hasattr(owner, self.functions_key):
-            setattr(owner, self.functions_key, set())
+    def __set_name__(self, owner: type, name: str):
+        functions_map = TycheAccessorStore.get_accessor_functions_map(type(self))
+        if owner not in functions_map:
+            functions_map[owner] = set()
 
         # Add this symbol to the set of function symbols.
-        getattr(owner, self.functions_key).add(name)
+        functions_map[owner].add(name)
         # Replace this decorated function with the actual function.
         setattr(owner, name, self.fn)
 
@@ -126,19 +153,14 @@ class concept(IndividualPropertyDecorator):
     Marks that a method provides the value of a concept for use in Tyche formulas.
     The name of the function is used as the name of the concept in formulas.
     """
-    accessors_key: Final[str] = "_Tyche_concepts"
-    functions_key: Final[str] = "_Tyche_concept_functions"
-    var_type_hint: Final[type] = TycheConceptField
+    field_type_hint: Final[type] = TycheConceptField
 
     def __init__(self, fn: Callable[[], ExclusiveRoleDist]):
-        super().__init__(concept.functions_key, fn)
+        super().__init__(fn)
 
     @staticmethod
     def get(obj_type: Type['Individual']) -> TycheAccessorStore:
-        return TycheAccessorStore.get_or_populate_for(
-            obj_type, concept.accessors_key,
-            "concept", concept.functions_key, concept.var_type_hint
-        )
+        return TycheAccessorStore.get_or_populate_for(obj_type, concept, concept.field_type_hint)
 
 
 class role(IndividualPropertyDecorator):
@@ -146,19 +168,14 @@ class role(IndividualPropertyDecorator):
     Marks that a method provides the value of a role for use in Tyche formulas.
     The name of the function is used as the name of the role in formulas.
     """
-    accessors_key: Final[str] = "_Tyche_roles"
-    functions_key: Final[str] = "_Tyche_role_functions"
-    var_type_hint: Final[type] = TycheRoleField
+    field_type_hint: Final[type] = TycheRoleField
 
     def __init__(self, fn: Callable[[], ExclusiveRoleDist]):
-        super().__init__(role.functions_key, fn)
+        super().__init__(fn)
 
     @staticmethod
     def get(obj_type: Type['Individual']) -> TycheAccessorStore:
-        return TycheAccessorStore.get_or_populate_for(
-            obj_type, role.accessors_key,
-            "role", role.functions_key, role.var_type_hint
-        )
+        return TycheAccessorStore.get_or_populate_for(obj_type, role, role.field_type_hint)
 
 
 class Individual(TycheContext):
@@ -190,11 +207,20 @@ class Individual(TycheContext):
         return Role.cast(role).direct_eval(self)
 
     @staticmethod
+    def describe(obj_type: Type['Individual']) -> str:
+        """ Returns a string describing the concepts and roles of the given Individual type. """
+        atoms = sorted(list(Individual.get_concept_names(obj_type)))
+        roles = sorted(list(Individual.get_role_names(obj_type)))
+        return f"{obj_type.__name__} {{atoms={atoms}, roles={roles}}}"
+
+    @staticmethod
     def get_concept_names(obj_type: Type['Individual']) -> set[str]:
+        """ Returns all the concept names of the given Individual type. """
         return concept.get(obj_type).all_symbols
 
     @staticmethod
     def get_role_names(obj_type: Type['Individual']) -> set[str]:
+        """ Returns all the role names of the given Individual type. """
         return role.get(obj_type).all_symbols
 
     @classmethod
@@ -270,6 +296,7 @@ class Individual(TycheContext):
     def __str__(self):
         # Key-values of concepts.
         concept_values = [f"{sym}={self.get_concept(sym):.3f}" for sym in self.concepts.all_symbols]
+        concept_values.sort()
 
         # We don't want to list out the entirety of the roles.
         role_values = []
@@ -279,6 +306,7 @@ class Individual(TycheContext):
                 role_values.append(f"{role_symbol}=<empty role>")
             else:
                 role_values.append(f"{role_symbol}=<role of {len(role)}>")
+        role_values.sort()
 
         name = self.name if self.name is not None else ""
         key_values = ", ".join(concept_values + role_values)

@@ -11,8 +11,8 @@ from tyche.language import *
 class Person(Individual):
     is_male: TycheConceptField
 
-    def __init__(self, name=None, gender=None, age=None):
-        super().__init__()
+    def __init__(self, name: str = None, gender=None, age=None):
+        super().__init__(name=name)
         # self.name = StringField(name)
         # self.gender = StringDist('male','female','other')
         self.age = UniformDist(0, 120)
@@ -37,8 +37,8 @@ class Person(Individual):
 class Student(Person):
     supervisor: TycheRoleField
 
-    def __init__(self, name=None, gender=None, age=None, gpa=50):
-        super().__init__()
+    def __init__(self, name: str = None, gender=None, age=None, gpa=50):
+        super().__init__(name=name)
         self.gpa = NormalDist(60, 10).truncate(0, 100)
         self.supervisor = ExclusiveRoleDist()
 
@@ -61,8 +61,8 @@ class Student(Person):
 
 
 class Supervisor(Person):
-    def __init__(self, wwcc=0.0):
-        super().__init__()
+    def __init__(self, name: str, wwcc: float = 0.0):
+        super().__init__(name=name)
         # self.students = SetDistribution(Student.cls)#somethig like this, hack otgether manually
         self.age = self.age.truncate(21, 120)
         self._wwcc = wwcc
@@ -73,14 +73,24 @@ class Supervisor(Person):
         return self._wwcc
 
 
-clare = Student()
-natasha = Supervisor(0.7)
-tim = Supervisor(0.85)
+print()
+print(Individual.describe(Person))
+print(Individual.describe(Student))
+print(Individual.describe(Supervisor))
+
+clare = Student("Clare")
+natasha = Supervisor("Natasha", 0.7)
+tim = Supervisor("Tim", 0.85)
 clare.supervisor.add(natasha, 2)
 clare.supervisor.add(tim, 0.5)
 clare.supervisor.add(None, 1)
 
-adult = Atom('adult')
+print()
+print("Model:")
+print(f"  {clare}")
+print(f"  {natasha}")
+print(f"  {tim}")
+print()
 
 # adult.lower_bound is an abbreviation for
 #     Conditional(condition=adult, if_yes=Yes, if_no= Concept('X')) where X is a new String
@@ -88,24 +98,24 @@ adult = Atom('adult')
 #     Conditional(condition=adult, if_yes=Concept('X'), if_no=No) where X is a new String
 
 supervisor_WWCC = Exists("supervisor") & Expectation("supervisor", "wwcc")
-tall_adult = adult & Atom("tall")
+tall_adult = Atom("adult") & Atom("tall")
 supervisor_tall_adult = Exists("supervisor") & Expectation("supervisor", tall_adult)
 supervisor = Role('supervisor')  # supervisor is a role object wih functions is, is_not, is_given
 
 print()
-print("P(clare is male) = {:.3f}".format(Atom("is_male").eval(clare)))
-print("P(clare is an adult) = {:.3f}".format(adult.eval(clare)))
-print("P(clare passed) = {:.3f}".format(Atom("passed").eval(clare)))
-print("P(clare is tall) = {:.3f}".format(Atom("tall").eval(clare)))
+print("P(clare is male) = {:.3f}".format(clare.eval("is_male")))
+print("P(clare is an adult) = {:.3f}".format(clare.eval("adult")))
+print("P(clare passed) = {:.3f}".format(clare.eval("passed")))
+print("P(clare is tall) = {:.3f}".format(clare.eval("tall")))
 print()
 print("clare is a tall adult = {}".format(tall_adult))
-print("P(clare is a tall adult) = {:.3f}".format(tall_adult.eval(clare)))
+print("P(clare is a tall adult) = {:.3f}".format(clare.eval(tall_adult)))
 print()
 print("clare's supervisor is a tall adult = {}".format(supervisor_tall_adult))
-print("P(clare's supervisor is a tall adult) = {:.3f}".format(supervisor_tall_adult.eval(clare)))
+print("P(clare's supervisor is a tall adult) = {:.3f}".format(clare.eval(supervisor_tall_adult)))
 print()
 print("clare's supervisor has a WWCC = {}".format(supervisor_WWCC))
-print("P(clare's supervisor has a WWCC) = {:.3f}".format(supervisor_WWCC.eval(clare)))
+print("P(clare's supervisor has a WWCC) = {:.3f}".format(clare.eval(supervisor_WWCC)))
 print()
 
 # clare.supervisor #is a distribution of individuals
