@@ -11,10 +11,8 @@ from tyche.language import *
 class Person(Individual):
     is_male: TycheConceptField
 
-    def __init__(self, name: str = None, gender=None, age=None):
+    def __init__(self, name: str = None):
         super().__init__(name=name)
-        # self.name = StringField(name)
-        # self.gender = StringDist('male','female','other')
         self.age = UniformDist(0, 120)
         self.height_cm = NormalDist(170.8, 7).truncate(10, 272)
         self.is_male = False

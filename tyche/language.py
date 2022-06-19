@@ -724,8 +724,6 @@ class Exists(Concept):
         return 1.0
 
 
-
-
 class LeastFixedPoint(Concept):
     """
     class for representing the aleatoric fixed point construct in the language.
