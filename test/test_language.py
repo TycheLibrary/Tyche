@@ -17,9 +17,9 @@ class TestLanguage(unittest.TestCase):
         Tests equality checking of formulas.
         """
         # Constants
-        self.assertEqual(always, always)
-        self.assertNotEqual(always, never)
-        self.assertNotEqual(always, self.y)
+        self.assertEqual(ALWAYS, ALWAYS)
+        self.assertNotEqual(ALWAYS, NEVER)
+        self.assertNotEqual(ALWAYS, self.y)
 
         # Atoms
         self.assertEqual(self.x, self.x)
@@ -27,11 +27,11 @@ class TestLanguage(unittest.TestCase):
 
         # Conditionals
         cond1 = Conditional(self.x, self.y, self.z)
-        cond2 = Conditional(self.x, always, never)
+        cond2 = Conditional(self.x, ALWAYS, NEVER)
         cond3 = Conditional(self.x, self.y, self.z)
         self.assertEqual(cond1, cond3)
         self.assertNotEqual(cond1, cond2)
-        self.assertNotEqual(cond1, never)
+        self.assertNotEqual(cond1, NEVER)
 
         # Marginal Expectations
         marg1 = Expectation(self.r, self.x)
@@ -45,8 +45,8 @@ class TestLanguage(unittest.TestCase):
         """
         Tests the conversion of formulas to strings.
         """
-        self.assertEqual("\u22A4", str(always))
-        self.assertEqual("\u22A5", str(never))
+        self.assertEqual("\u22A4", str(ALWAYS))
+        self.assertEqual("\u22A5", str(NEVER))
 
         a = Atom("a")
         b = Atom("b")
@@ -69,17 +69,17 @@ class TestLanguage(unittest.TestCase):
         context = EmptyContext()
         flip = Constant("flip", 0.5)
 
-        self.assertEqual(1, context.eval(always))
+        self.assertEqual(1, context.eval(ALWAYS))
         self.assertEqual(0.5, context.eval(flip))
-        self.assertEqual(0, context.eval(never))
+        self.assertEqual(0, context.eval(NEVER))
 
-        self.assertEqual(1, context.eval(always | never))
-        self.assertEqual(0, context.eval(always & never))
-        self.assertEqual(1, context.eval(always | flip))
-        self.assertAlmostEqual(0.5, context.eval(never | flip))
+        self.assertEqual(1, context.eval(ALWAYS | NEVER))
+        self.assertEqual(0, context.eval(ALWAYS & NEVER))
+        self.assertEqual(1, context.eval(ALWAYS | flip))
+        self.assertAlmostEqual(0.5, context.eval(NEVER | flip))
         self.assertAlmostEqual(0.5 * 0.5, context.eval(flip & flip))
-        self.assertAlmostEqual(0.5 * 0.5, context.eval((flip & flip) | (never & flip)))
+        self.assertAlmostEqual(0.5 * 0.5, context.eval((flip & flip) | (NEVER & flip)))
         self.assertAlmostEqual(
             1 - ((1 - 0.5 * 0.5) * (1 - 1 * 0.5)),
-            context.eval((flip & flip) | (always & flip))
+            context.eval((flip & flip) | (ALWAYS & flip))
         )

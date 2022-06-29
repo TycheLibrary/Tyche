@@ -3,7 +3,7 @@ This file contains examples from the paper "Aleatoric Description Logic
 for Probabilistic Reasoning" by Tim French and Thomas Smoker.
 """
 from tyche.individuals import Individual, TycheConceptField, IdentityIndividual, TycheRoleField
-from tyche.language import Atom, Concept, ExclusiveRoleDist, Expectation, Exists
+from tyche.language import Atom, Concept, ExclusiveRoleDist, Expectation, Exists, TycheLanguageException
 
 
 class VirusTransmissionIndividual(Individual):
@@ -61,14 +61,18 @@ class VirusTransmissionScenario:
         return {individual.name: individual.eval(concept) for individual in self.individuals}
 
     def __str__(self):
-        """ Prints the current state of the model to the console. """
-        return "\n".join([str(individual) for individual in self.individuals])
+        return self.to_str()
+
+    def to_str(self, *, detail_lvl: int = 1, indent_lvl: int = 0):
+        return "\n".join([
+            ctx.to_str(detail_lvl=detail_lvl, indent_lvl=indent_lvl) for ctx in self.individuals
+        ])
 
 
 if __name__ == "__main__":
     model = VirusTransmissionScenario()
     print(": Original model")
-    print(model)
+    print(model.to_str(detail_lvl=3, indent_lvl=1))
 
     print()
     has_fever = Atom("has_fever")
@@ -103,3 +107,26 @@ if __name__ == "__main__":
         print(model)
 
     print()
+    print(f": Reset model, and observe {exposed} at Hector")
+    model = VirusTransmissionScenario()
+    model.hector.observe(exposed)
+    print(model.to_str(detail_lvl=3, indent_lvl=1))
+
+    print()
+    print(f": Observe {exposed} at Igor")
+    model.igor.observe(exposed)
+    print(model.to_str(detail_lvl=3, indent_lvl=1))
+
+    try:
+        print()
+        print(f": Observe {exposed} at Julia")
+        model.julia.observe(exposed)
+        print(model.to_str(detail_lvl=3, indent_lvl=1))
+    except TycheLanguageException as e:
+        if "impossible" in str(e):
+            print(
+                "- Observation at Julia failed as expected, as it would be impossible after "
+                "Hector and Igor were found to definitely not have the virus"
+            )
+        else:
+            raise e

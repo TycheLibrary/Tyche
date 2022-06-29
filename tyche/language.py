@@ -4,9 +4,10 @@ description logic (ADL) formulas.
 
 ADL is designed to support both mathematical notion and a formal english notion.
 """
-from typing import Final, cast, Optional, Union, Tuple, NewType
+from typing import Final, cast, Optional, Union, Tuple, NewType, Callable
 
 from tyche.reference import MutableReference
+from tyche.string_utils import format_dict
 
 
 class TycheLanguageException(Exception):
@@ -138,21 +139,46 @@ class ExclusiveRoleDist:
         for ctx, _ in self._entries:
             yield ctx
 
-    def apply_bayes_rule(self, observation: 'Concept') -> 'ExclusiveRoleDist':
+    def apply_bayes_rule(
+            self, observation: 'Concept', likelihood: float = 1, learning_rate: float = 1) -> 'ExclusiveRoleDist':
         """
         Applies Bayes' rule to update the probabilities of the individuals
-        mapped within this role based upon an observation. This cannot
-        learn anything about the None individual. Returns an updated
+        mapped within this role based upon an uncertain observation. This
+        cannot learn anything about the None individual. Returns an updated
         role distribution.
+
+        The likelihood works by applying bayes rule to the event that the observation occurred
+        or was incorrectly observed ((event with likelihood) OR (NOT event with 1 - likelihood)).
+        Therefore, a likelihood of 0 represents that the observation was observed to be false
+        (this is equivalent to observing NOT observation).
+        See: https://stats.stackexchange.com/questions/345200/applying-bayess-theorem-when-evidence-is-uncertain
+
+        The learning_rate works by acting as a weight for the result of Bayes' rule, and the
+        original weight. A learning_rate of 1 represents to just use the result of Bayes' rule.
+        A learning_rate of 0 represents that the weight of each individual in the role should
+        remain unchanged.
         """
-        total_weight = self.total_weight
-        if total_weight == 0:
-            # If there are no entries, then we can't learn anything.
+        if likelihood < 0 or likelihood > 1:
+            raise TycheLanguageException("The likelihood should fall between 0 and 1 inclusive")
+        if learning_rate < 0 or learning_rate > 1:
+            raise TycheLanguageException("The learning_rate should fall between 0 and 1 inclusive")
+
+        # If the learning rate is 0, then nothing will be learned.
+        if learning_rate == 0:
             return self
 
-        role_belief: float = Expectation.evaluate_for_role(self, observation, always)
-        if role_belief == 0:
-            raise TycheLanguageException("Observation is impossible within model")
+        # If there are no entries, then we can't learn anything.
+        if self.total_weight == 0:
+            return self
+
+        role_belief: float = Expectation.evaluate_for_role(self, observation, ALWAYS)
+
+        if role_belief == 0 and likelihood != 0:
+            raise TycheLanguageException(
+                "The observation is impossible under this model, but the likelihood of the observation is not 0")
+        if role_belief == 1 and likelihood != 1:
+            raise TycheLanguageException(
+                "The observation is certain under this model, but the likelihood of the observation is not 1")
 
         learned_entries: list[tuple[Optional['TycheContext'], float]] = []
         for context, weight in self._entries:
@@ -162,9 +188,17 @@ class ExclusiveRoleDist:
                 continue
 
             belief = context.eval(observation)
-            new_weight = weight * belief / role_belief
-            if new_weight > 0:
-                learned_entries.append((context, new_weight))
+            new_weight = 0
+            if likelihood > 0:
+                obs_correct_weight = weight * belief / role_belief
+                new_weight += likelihood * obs_correct_weight
+            if likelihood < 1:
+                obs_incorrect_weight = weight * (1 - belief) / (1 - role_belief)
+                new_weight += (1 - likelihood) * obs_incorrect_weight
+
+            learned_weight = learning_rate * new_weight + (1 - learning_rate) * weight
+            if learned_weight > 0:
+                learned_entries.append((context, learned_weight))
 
         return ExclusiveRoleDist(learned_entries)
 
@@ -190,12 +224,20 @@ class ExclusiveRoleDist:
             yield context, weight / total_weight
 
     def __str__(self):
+        return self.to_str()
+
+    def to_str(self, *, detail_lvl: int = 1, indent_lvl: int = 0):
         if self.is_empty():
             return f"{{<empty {type(self).__name__}>}}"
 
-        context_percentages = [f"{100 * prob:.1f}%: {ctx}" for ctx, prob in self]
-        possible_contexts = ", ".join(context_percentages)
-        return f"{{{possible_contexts}}}"
+        sub_detail_lvl = detail_lvl - 1
+        sub_indent_lvl = 0 if indent_lvl == 0 else indent_lvl + 1
+
+        def format_prob(prob: int): return f"{100 * prob:.1f}%"
+        def format_ctx(ctx: TycheContext): return ctx.to_str(detail_lvl=sub_detail_lvl, indent_lvl=sub_indent_lvl)
+
+        key_values = [(prob, ctx) for ctx, prob in self]
+        return format_dict(key_values, key_format_fn=format_prob, val_format_fn=format_ctx, indent_lvl=indent_lvl)
 
 
 # This is used to allow passing names (e.g. "x", "y", etc...) directly
@@ -226,6 +268,17 @@ class TycheContext:
         """
         raise NotImplementedError("eval_role is unimplemented for " + type(self).__name__)
 
+    def observe(self, observation: 'Concept', likelihood: float = 1, learning_rate: float = 1):
+        """
+        Attempts to update the beliefs of this individual based upon
+        an observation of the given concept.
+
+        The optional likelihood parameter provides a degree of certainty
+        about the observation. By default, the observation is assumed to
+        be reliable.
+        """
+        raise NotImplementedError("observe is unimplemented for " + type(self).__name__)
+
     def get_concept(self, symbol: str) -> float:
         """
         Gets the probability of the atom with the given symbol
@@ -254,6 +307,17 @@ class TycheContext:
         """
         raise NotImplementedError("eval_mutable_role is unimplemented for " + type(self).__name__)
 
+    def __str__(self):
+        return self.to_str()
+
+    def to_str(self, *, detail_lvl: int = 1, indent_lvl: int = 0):
+        """
+        A version of str() that allows additional formatting options to be specified.
+        Allows specifying the number of levels of detail to include, and the
+        indentation to use while formatting.
+        """
+        raise NotImplementedError("to_str is unimplemented for " + type(self).__name__)
+
 
 class EmptyContext(TycheContext):
     """
@@ -277,6 +341,9 @@ class EmptyContext(TycheContext):
     def get_mutable_role(self, symbol: str) -> ExclusiveRoleDist:
         raise TycheLanguageException("Unknown role {}".format(symbol))
 
+    def to_str(self, *, detail_lvl: int = 1, indent_lvl: int = 0):
+        return f"<EmptyContext>"
+
 
 class Concept:
     """
@@ -291,11 +358,19 @@ class Concept:
         else:
             raise TycheLanguageException("Incompatible concept type {}".format(type(concept).__name__))
 
-    def get_child_concepts(self) -> list['Concept']:
+    def get_child_concepts_in_eval_context(self) -> list['Concept']:
         """
-        Returns the child concepts of this concept.
+        Returns an ordered list of the child concepts of this concept that would be
+        evaluated in the same context as this concept is evaluated.
         """
-        raise NotImplementedError("get_child_concepts is unimplemented for " + type(self).__name__)
+        raise NotImplementedError("get_children_in_eval_context is unimplemented for " + type(self).__name__)
+
+    def copy_with_new_child_concept_from_eval_context(self, index: int, concept: 'Concept'):
+        """
+        Returns a copy of this concept with the child concept at the given index
+        in the list returned by get_children_in_eval_context replaced with the given concept.
+        """
+        raise NotImplementedError("copy_with_replaced_child_from_eval_context is unimplemented for " + type(self).__name__)
 
     def __str__(self) -> str:
         """
@@ -382,20 +457,20 @@ class Concept:
         """
         inline negation operator
         """
-        return never.when(self).otherwise(always)
+        return NEVER.when(self).otherwise(ALWAYS)
 
     def __and__(self, concept) -> 'Concept':
         """
         inline conjunction operator,
         note ordering for lazy evaluation
         """
-        return concept.when(self).otherwise(never)
+        return concept.when(self).otherwise(NEVER)
 
     def __or__(self, concept) -> 'Concept':
         """
         inline disjunction operator
         """
-        return always.when(self).otherwise(concept)
+        return ALWAYS.when(self).otherwise(concept)
 
     '''
     Other inline operators to define:
@@ -416,6 +491,12 @@ class Atom(Concept):
             Atom.check_symbol(symbol, symbol_type_name=type(self).__name__)
 
         self.symbol = symbol
+
+    def get_child_concepts_in_eval_context(self) -> list[Concept]:
+        return []
+
+    def copy_with_new_child_concept_from_eval_context(self, index: int, concept: Concept):
+        raise IndexError("Atom's have no child concepts")
 
     @staticmethod
     def check_symbol(symbol: str, *, symbol_name="symbol", symbol_type_name: str = "Atom", context: str = None):
@@ -522,8 +603,8 @@ class Constant(Atom):
         return self.probability
 
 
-always: Final[Constant] = Constant("\u22A4", 1)
-never: Final[Constant] = Constant("\u22A5", 0)
+ALWAYS: Final[Constant] = Constant("\u22A4", 1)
+NEVER: Final[Constant] = Constant("\u22A5", 0)
 
 
 class Conditional(Concept):
@@ -535,15 +616,23 @@ class Conditional(Concept):
         self.if_yes = Concept.cast(if_yes)
         self.if_no = Concept.cast(if_no)
 
+    def get_child_concepts_in_eval_context(self) -> list[Concept]:
+        return [self.condition, self.if_yes, self.if_no]
+
+    def copy_with_new_child_concept_from_eval_context(self, index: int, concept: Concept):
+        args = self.get_child_concepts_in_eval_context()
+        args[index] = concept
+        return Conditional(*args)
+
     def __str__(self):
         # Shorthand representations.
-        if self.if_yes == always and self.if_no == never:
+        if self.if_yes == ALWAYS and self.if_no == NEVER:
             return str(self.condition)
-        if self.if_yes == never and self.if_no == always:
+        if self.if_yes == NEVER and self.if_no == ALWAYS:
             return "\u00AC{}".format(str(self.condition))
-        if self.if_no == never:
+        if self.if_no == NEVER:
             return "({} \u2227 {})".format(str(self.condition), str(self.if_yes))
-        if self.if_yes == always:
+        if self.if_yes == ALWAYS:
             return "({} \u2228 {})".format(str(self.condition), str(self.if_no))
 
         # Standard ternary.
@@ -590,10 +679,73 @@ class ConditionalWithoutElse(Conditional):
     Represents an aleatoric ternary construct of the form (condition ? if_yes : Always).
     """
     def __init__(self, condition: CompatibleWithConcept, if_yes: CompatibleWithConcept):
-        super().__init__(condition, if_yes, always)
+        super().__init__(condition, if_yes, ALWAYS)
 
     def otherwise(self, if_no: Concept) -> Conditional:
         return Conditional(self.condition, self.if_yes, if_no)
+
+
+class Given(Concept):
+    """
+    Represents a concept that should only be evaluated after the given evaluates to true.
+    Due to this, the evaluation of the Given must be handled by the context.
+    Therefore, these should be avoided generally, and only used when they are required.
+    """
+    def __init__(self, concept: CompatibleWithConcept, given: CompatibleWithConcept):
+        self.concept = Concept.cast(concept)
+        self.given = Concept.cast(given)
+
+    @staticmethod
+    def maybe_unpack(
+            concept: CompatibleWithConcept,
+            given: Optional[CompatibleWithConcept] = None
+    ) -> tuple[Concept, Concept]:
+        """
+        If the concept is a Given, then this unpacks the Given into its concept and the given itself.
+        If given is provided whilst the concept is also a Given,
+        the resulting given will be the AND of both.
+        Returns a tuple of (concept, given).
+        """
+        given: Optional[Concept] = Concept.cast(given) if given is not None else None
+        while isinstance(concept, Given):
+            concept_as_given = cast(Given, concept)
+            concept = concept_as_given.concept
+            given = concept_as_given.given if given is None else given & concept_as_given.given
+
+        if given is None:
+            given = ALWAYS
+        return concept, given
+
+    def get_child_concepts_in_eval_context(self) -> list[Concept]:
+        return []
+
+    def copy_with_new_child_concept_from_eval_context(self, index: int, concept: Concept):
+        raise IndexError("Given operators must be specially handled by the context")
+
+    def __str__(self):
+        return f"({self.concept} | {self.given})"
+
+    def __repr__(self):
+        return f"Given(concept={repr(self.concept)}, given={repr(self.given)})"
+
+    def __eq__(self, obj):
+        if type(obj) != type(self):
+            return False
+
+        other: 'Given' = cast('Given', obj)
+        return self.concept == other.concept and self.given == other.given
+
+    def __lt__(self, obj):
+        raise TycheLanguageException("not yet implemented")
+
+    def direct_eval(self, context: TycheContext):
+        raise IndexError("The Given operator must be evaluated specially by the context")
+
+    def normal_form(self):
+        raise TycheLanguageException("not yet implemented")
+
+    def is_weaker(self, concept):
+        raise TycheLanguageException("not yet implemented")
 
 
 class Expectation(Concept):
@@ -603,22 +755,25 @@ class Expectation(Concept):
     from the given role, given that the individual evaluates given to true'.
     If given is not given, then it defaults to always.
     """
-    role: Role
-    concept: Concept
-    given: Concept
-
     def __init__(
             self,
             role: CompatibleWithRole,
             concept: CompatibleWithConcept,
             given: Optional[CompatibleWithConcept] = None):
 
+        concept, given = Given.maybe_unpack(concept, given)
         self.role: Role = Role.cast(role)
         self.concept: Concept = Concept.cast(concept)
-        self.given = Concept.cast(given) if given is not None else always
+        self.given = Concept.cast(given) if given is not None else ALWAYS
+
+    def get_child_concepts_in_eval_context(self) -> list[Concept]:
+        return []
+
+    def copy_with_new_child_concept_from_eval_context(self, index: int, concept: Concept):
+        raise IndexError("Expectation operators have no child concepts in the eval context")
 
     def __str__(self):
-        if self.given == always:
+        if self.given == ALWAYS:
             return f"(\U0001D53C_{str(self.role)}. {str(self.concept)})"
         else:
             return f"(\U0001D53C_{str(self.role)}. {str(self.concept)} | {str(self.given)})"
@@ -646,7 +801,7 @@ class Expectation(Concept):
                 result.add_combining_weights(None, outer_prob)
                 continue
 
-            for inner_context, inner_prob in outer_context.get_role(inner_role):
+            for inner_context, inner_prob in outer_context.get_role(inner_role.symbol):
                 result.add_combining_weights(inner_context, outer_prob * inner_prob)
 
         return result
@@ -658,13 +813,22 @@ class Expectation(Concept):
         This evaluation contains an implicit given that the role is non-None. If the
         role only contains None, then this will evaluate to vacuously True.
         """
+        concept, given = Given.maybe_unpack(concept, given)
+
         total_prob = 0.0
         total_given_prob = 0.0
         concept_and_given = concept & given
         for other_context, prob in role:
-            if other_context is not None:
-                total_prob += prob * other_context.eval(concept_and_given)
-                total_given_prob += prob * other_context.eval(given)
+            if other_context is None:
+                continue
+
+            given_prob = other_context.eval(given)
+            if given_prob <= 0:
+                continue
+
+            true_prob = other_context.eval(concept_and_given)
+            total_prob += prob * true_prob
+            total_given_prob += prob * given_prob
 
         # Vacuously True if only None in role, or if all givens evaluated to never.
         if total_given_prob == 0:
@@ -672,6 +836,46 @@ class Expectation(Concept):
 
         # Division for the implicit given non-None.
         return total_prob / total_given_prob
+
+    @staticmethod
+    def reverse_observation(
+            role: ExclusiveRoleDist, concept: Concept, given: Concept, likelihood: float = 1) -> ExclusiveRoleDist:
+        """
+        Evaluates to a role that represents the chance that each individual in the role
+        was the individual that contributed to the observation. The likelihood gives the
+        chance that the observation was true (i.e., a likelihood of 0 represents that the
+        observation of this expectation was false).
+        """
+        entries: list[tuple[TycheContext, float]] = []
+
+        total_given_prob = 0.0
+        concept_and_given = concept & given
+        for other_context, prob in role:
+            if other_context is None:
+                continue
+
+            given_prob = other_context.eval(given)
+            if given_prob <= 0:
+                continue
+
+            true_prob = other_context.eval(concept_and_given)
+            false_prob = 1 - true_prob
+            matches_observation_prob = likelihood * true_prob + (1 - likelihood) * false_prob
+            chosen_prob = prob * given_prob
+            total_given_prob += chosen_prob
+
+            weight = chosen_prob * matches_observation_prob
+            if weight > 0:
+                entries.append((other_context, weight))
+
+        # If no entries could have possibly matched, then the expectation would have been vacuously true.
+        if total_given_prob == 0:
+            return ExclusiveRoleDist()
+        if len(entries) == 0:
+            raise TycheLanguageException("The observation is impossible under this model")
+
+        # Division for the implicit given non-None.
+        return ExclusiveRoleDist(entries)
 
     def direct_eval(self, context: TycheContext):
         """
@@ -691,6 +895,12 @@ class Exists(Concept):
     """
     def __init__(self, role: CompatibleWithRole):
         self.role: Role = Role.cast(role)
+
+    def get_child_concepts_in_eval_context(self) -> list[Concept]:
+        return []
+
+    def copy_with_new_child_concept_from_eval_context(self, index: int, concept: Concept):
+        raise IndexError("Exists concepts have no child concepts")
 
     def __str__(self):
         return "(Exists_{})".format(str(self.role))
@@ -730,12 +940,23 @@ class LeastFixedPoint(Concept):
     This is equivalent to the marginal expectation operator, (a|b).
     See: https://peteroupc.github.io/bernoulli.html
     """
-    def __init__(self, variable, concept):
+    def __init__(self, variable: CompatibleWithRole, concept: CompatibleWithConcept):
+        variable = Role.cast(variable)
+        concept = Concept.cast(concept)
+
         if LeastFixedPoint.is_linear(variable, concept):
             self.variable = variable  # role object
             self.concept = concept  # concept object
         else:
             raise TycheLanguageException("The variable {} is not linear in {}".format(variable, concept))
+
+    def get_child_concepts_in_eval_context(self) -> list[Concept]:
+        return [self.concept]
+
+    def copy_with_new_child_concept_from_eval_context(self, index: int, concept: Concept):
+        args = self.get_child_concepts_in_eval_context()
+        args[index] = concept
+        return Conditional(self.variable, *args)
 
     def __str__(self):
         """

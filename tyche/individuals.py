@@ -6,7 +6,7 @@ from typing import TypeVar, Callable, get_type_hints, Final, Type, cast, Generic
 import numpy as np
 
 from tyche.language import ExclusiveRoleDist, TycheLanguageException, TycheContext, Atom, Concept, Expectation, \
-    Role, RoleDistributionEntries, always, CompatibleWithConcept, CompatibleWithRole
+    Role, RoleDistributionEntries, ALWAYS, CompatibleWithConcept, CompatibleWithRole, NEVER, Constant, Given
 
 # Marks instance variables of classes as probabilities that
 # may be accessed by Tyche formulas.
@@ -201,6 +201,10 @@ class Individual(TycheContext):
         self.roles = role.get(type(self))
 
     def eval(self, concept: CompatibleWithConcept) -> float:
+        # The Given operator does nothing when evaluated at a regular individual.
+        if isinstance(concept, Given):
+            return self.eval(cast(Given, concept).concept)
+
         return Concept.cast(concept).direct_eval(self)
 
     def eval_role(self, role: CompatibleWithRole) -> ExclusiveRoleDist:
@@ -278,22 +282,65 @@ class Individual(TycheContext):
         ref = self.roles.get_mutable(self, symbol)
         return GuardedMutableReference(ref, self.coerce_role_value, self.coerce_role_value)
 
-    def observe(self, concept: Concept):
-        """
-        Attempts to update the beliefs of this individual based upon
-        an observation of the given concept.
-        """
-        if isinstance(concept, Expectation):
-            # If an expectation over a role is observed, then we can simply apply Bayes' rule.
-            expectation: Expectation = cast(Expectation, concept)
+    def observe(self, observation: Concept, likelihood: float = 1, learning_rate: float = 1):
+        # If an expectation over a role is observed, then we can apply Bayes' rule to the role.
+        if isinstance(observation, Expectation):
+            expectation: Expectation = cast(Expectation, observation)
             observed_role_ref = expectation.role.eval_mutable(self)
-            curr_role_value = observed_role_ref.get()
-            new_role_value = curr_role_value.apply_bayes_rule(expectation.concept)
+            prev_role_value = observed_role_ref.get()
+            new_role_value = prev_role_value.apply_bayes_rule(expectation.concept, likelihood, learning_rate)
             observed_role_ref.set(new_role_value)
-        else:
-            raise Exception(f"Updating of beliefs based upon observations of type {type(concept)} are not supported")
 
-    def __str__(self):
+            # Propagate the observation!
+            possible_matching_individuals = Expectation.reverse_observation(
+                prev_role_value, expectation.concept, expectation.given, likelihood
+            )
+            concept_given = Given(expectation.concept, expectation.given)
+            for ctx, prob in possible_matching_individuals:
+                if ctx is not None:
+                    ctx.observe(concept_given, likelihood, learning_rate * prob)
+
+        else:
+            # Otherwise, we can recurse through the observation.
+            observation_prob = self.eval(observation)
+            obs_matches_expected_prob = likelihood * observation_prob + (1 - likelihood) * (1 - observation_prob)
+            if obs_matches_expected_prob == 0:
+                raise TycheIndividualsException("The observation is impossible under this model")
+
+            child_concepts = observation.get_child_concepts_in_eval_context()
+            for index, child_concept in enumerate(child_concepts):
+                if isinstance(child_concept, Constant):
+                    continue  # Quick skip
+
+                # The likelihood that this child concept is True given the observation,
+                # P(child|observation) = P(observation|child) * P(child) / P(observation).
+                obs_given_child = observation.copy_with_new_child_concept_from_eval_context(index, ALWAYS)
+                obs_given_not_child = observation.copy_with_new_child_concept_from_eval_context(index, NEVER)
+
+                child_prob = self.eval(child_concept)
+                not_child_prob = 1 - child_prob
+                child_true_prob = self.eval(obs_given_child) * child_prob / observation_prob
+                child_false_prob = self.eval(obs_given_not_child) * not_child_prob / observation_prob
+
+                # Corresponds to the learning_rate parameter.
+                child_influence = abs(child_true_prob - child_false_prob)
+                if child_influence <= 0:
+                    continue
+
+                # Corresponds to the likelihood parameter.
+                if child_true_prob + child_false_prob <= 0:
+                    continue
+                child_likelihood = child_true_prob / (child_true_prob + child_false_prob)
+
+                # Propagate!
+                self.observe(child_concept, child_likelihood, learning_rate * child_influence)
+
+    def to_str(self, *, detail_lvl: int = 1, indent_lvl: int = 0):
+        if detail_lvl <= 0:
+            return self.name
+
+        sub_detail_lvl = detail_lvl - 1
+
         # Key-values of concepts.
         concept_values = [f"{sym}={self.get_concept(sym):.3f}" for sym in self.concepts.all_symbols]
         concept_values.sort()
@@ -302,10 +349,7 @@ class Individual(TycheContext):
         role_values = []
         for role_symbol in self.roles.all_symbols:
             role = self.get_role(role_symbol)
-            if role.is_empty():
-                role_values.append(f"{role_symbol}=<empty role>")
-            else:
-                role_values.append(f"{role_symbol}=<role of {len(role)}>")
+            role_values.append(f"{role_symbol}={role.to_str(detail_lvl=sub_detail_lvl, indent_lvl=indent_lvl)}")
         role_values.sort()
 
         name = self.name if self.name is not None else ""
@@ -320,7 +364,6 @@ class IdentityIndividual(TycheContext):
     over the set of possible individuals in the id role.
 
     The None-individual is not supported for identity roles.
-
     """
     name: Optional[str]
     _id: TycheRoleField
@@ -360,7 +403,7 @@ class IdentityIndividual(TycheContext):
         return self._id.remove(individual)
 
     def eval(self, concept: 'Concept') -> float:
-        return Expectation.evaluate_for_role(self._id, concept, always)
+        return Expectation.evaluate_for_role(self._id, concept, ALWAYS)
 
     def eval_role(self, role: 'Role') -> ExclusiveRoleDist:
         return role.direct_eval(self)
@@ -381,17 +424,24 @@ class IdentityIndividual(TycheContext):
         raise TycheIndividualsException(
             f"Cannot evaluate mutable roles for instances of {type(self).__name__}")
 
-    def observe(self, concept: Concept):
-        """
-        Updates the belief about what individual is the true individual
-        based upon an observation of a concept.
-        """
+    def observe(self, observation: 'Concept', likelihood: float = 1, learning_rate: float = 1):
+        if learning_rate <= 0:
+            return
         self._verify_not_empty()
 
-        # It may not be totally expected that this observation _only_
-        # updates the id role, but ignores updates to any roles within
-        # the individuals that could be updated.
-        self._id = self._id.apply_bayes_rule(concept)
+        prev_id_value = self._id
+        self._id = prev_id_value.apply_bayes_rule(observation, likelihood, learning_rate)
+
+        # Propagate the observation!
+        obs_is_given = isinstance(observation, Given)
+        concept = observation if not obs_is_given else cast(Given, observation).concept
+        given = ALWAYS if not obs_is_given else cast(Given, observation).given
+        possible_matching_individuals = Expectation.reverse_observation(
+            prev_id_value, concept, given, likelihood
+        )
+        for ctx, prob in possible_matching_individuals:
+            if ctx is not None:
+                ctx.observe(observation, likelihood, learning_rate * prob)
 
     def __iter__(self):
         """
@@ -402,11 +452,8 @@ class IdentityIndividual(TycheContext):
         for ctx, prob in self._id:
             yield ctx, prob
 
-    def __str__(self):
-        name = self.name if f"{self.name} " is not None else ""
-        if self._id.is_empty():
-            return f"{name}{{<empty {type(self).__name__}>}}"
+    def to_str(self, *, detail_lvl: int = 1, indent_lvl: int = 0):
+        if detail_lvl <= 0:
+            return self.name
 
-        individual_percentages = [f"{100 * prob:.0f}%: {ctx}" for ctx, prob in self._id]
-        possible_individuals = ", ".join(individual_percentages)
-        return f"{name}{{{possible_individuals}}}"
+        return f"{self.name}{self._id.to_str(detail_lvl=detail_lvl, indent_lvl=indent_lvl)}"

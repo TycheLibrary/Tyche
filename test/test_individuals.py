@@ -167,8 +167,8 @@ class TestIndividuals(unittest.TestCase):
         sub = Role("sub")
 
         # Test evaluating some concepts for the individual.
-        self.assertEqual(1, individual.eval(always))
-        self.assertEqual(0, individual.eval(never))
+        self.assertEqual(1, individual.eval(ALWAYS))
+        self.assertEqual(0, individual.eval(NEVER))
         self.assertAlmostEqual(0.5, individual.eval(x))
         self.assertAlmostEqual(0.4 * 0.5 + 0.6 * 0.2, individual.eval(Expectation("sub", "y")))
         self.assertAlmostEqual(0.4 * 0.5 + 0.6 * 0.8, individual.eval(Expectation("sub", "z")))
