@@ -2,9 +2,10 @@
 Contains probability calculations that are used in many places in Tyche.
 """
 
+
 class TycheProbabilityException(Exception):
     """
-    Class for detailing language exceptions.
+    Class for detailing probability exceptions.
     """
     def __init__(self, message: str):
         self.message = "TycheProbabilityException: " + message

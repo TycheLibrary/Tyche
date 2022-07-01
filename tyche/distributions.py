@@ -9,11 +9,6 @@ from scipy import stats
 from numpy.typing import ArrayLike
 
 
-# TODO :
-#   1) Create a TruncatedContinuousProbDist that can truncate arbitrary distributions.
-#   2) Test the distribution's own shift/scale against LinearTransformedContinuousProbDist directly
-
-
 ProbDistLike: type = Union[float, int, 'ProbabilityDistribution']
 
 
@@ -124,7 +119,7 @@ class ContinuousProbDist(ProbDist):
         return self * (1.0 / other)
 
     def __rtruediv__(self, other: ProbDistLike) -> 'ContinuousProbDist':
-        raise NotImplementedError("Division by probability distributions is not yet implemented")
+        raise TycheDistributionsException("Division by probability distributions is not yet implemented")
 
     def __sub__(self, other: ProbDistLike) -> 'ContinuousProbDist':
         """
@@ -374,59 +369,3 @@ class NormalDist(ContinuousProbDist):
 
     def __repr__(self):
         return "NormalDist(mean={}, std_dev={})".format(self._mean, self._std_dev)
-
-
-class TruncatedNormalDist(ContinuousProbDist):
-    """
-    A truncated normal probability distribution.
-    """
-    def __init__(self, mean: float, std_dev: float, minimum: float, maximum: float):
-        super().__init__()
-        if maximum <= minimum:
-            raise TycheDistributionsException("TruncatedNormalDist maximum must be > than minimum. {} <= {}".format(
-                maximum, minimum
-            ))
-        if std_dev <= 0:
-            raise TycheDistributionsException("TruncatedNormalDist std_dev must be > than 0. {} <= 0".format(std_dev))
-
-        self._mean = mean
-        self._std_dev = std_dev
-        self._minimum = minimum
-        self._maximum = maximum
-        self._min_z_index = (self._minimum - self._mean) / self._std_dev
-        self._max_z_index = (self._maximum - self._mean) / self._std_dev
-
-    def cdf(self, x: ArrayLike) -> ArrayLike:
-        return stats.truncnorm.cdf(x, self._min_z_index, self._max_z_index, loc=self._mean, scale=self._std_dev)
-
-    def pdf(self, x: ArrayLike) -> ArrayLike:
-        return stats.truncnorm.pdf(x, self._min_z_index, self._max_z_index, loc=self._mean, scale=self._std_dev)
-
-    def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
-        return stats.truncnorm.ppf(prob, self._min_z_index, self._max_z_index, loc=self._mean, scale=self._std_dev)
-
-    def _shift(self, shift: float) -> 'ContinuousProbDist':
-        return TruncatedNormalDist(
-            self._mean + shift,
-            self._std_dev,
-            self._minimum + shift,
-            self._maximum + shift
-        )
-
-    def _scale(self, scale: float) -> 'ContinuousProbDist':
-        bound1 = self._minimum * scale
-        bound2 = self._maximum * scale
-        return TruncatedNormalDist(
-            self._mean * scale,
-            abs(self._std_dev * scale),  # Normal distributions are symmetrical
-            min(bound1, bound2),
-            max(bound1, bound2)
-        )
-
-    def __str__(self):
-        return "TruncatedNormal({}, {}, [{}, {}])".format(self._mean, self._std_dev, self._minimum, self._maximum)
-
-    def __repr__(self):
-        return "TruncatedNormalDist(mean={}, std_dev={}, min={}, max={})".format(
-            self._mean, self._std_dev, self._minimum, self._maximum
-        )

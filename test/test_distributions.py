@@ -32,15 +32,6 @@ class TestDistributions(unittest.TestCase):
         for x in np.linspace(1, 10, num=25):
             self.assertAlmostEqual(dist.cdf(-x), 1.0 - dist.cdf(x))
 
-    def test_truncated_normal(self):
-        """
-        Tests TruncatedNormalDist.
-        """
-        rng = np.random.default_rng()
-        self._test_dist_min_max(rng, TruncatedNormalDist(0, 1, 0, 1), 0, 1)
-        self._test_dist_min_max(rng, TruncatedNormalDist(-1, 3, -1, 1), -1, 1)
-        self._test_dist_min_max(rng, TruncatedNormalDist(-1, 6, -3, 1), -3, 1)
-
     def test_truncate_normal(self):
         """
         Tests truncating NormalDist.
@@ -53,10 +44,6 @@ class TestDistributions(unittest.TestCase):
         self._test_dist_min_max(rng, b, -1, 1)
         self._test_dist_min_max(rng, c, -3, 1)
 
-        self._test_equivalent(a, TruncatedNormalDist(0, 1, 0, 1))
-        self._test_equivalent(b, TruncatedNormalDist(-1, 3, -1, 1))
-        self._test_equivalent(c, TruncatedNormalDist(-1, 6, -3, 1))
-
     def test_linear_transform(self):
         """
         Tests linear transformations to distributions (e.g. shift and scale).
@@ -65,8 +52,7 @@ class TestDistributions(unittest.TestCase):
         for low, high in [(0, 1), (2, 4), (-8, 0), (-5, 5)]:
             test_distributions = [
                 UniformDist(low, high),
-                TruncatedNormalDist(0, 1, low, high),
-                TruncateContinuousProbDist(NormalDist(0, 1), low, high)
+                NormalDist(0, 1).truncate(low, high)
             ]
             for dist in test_distributions:
                 # Test Addition.
