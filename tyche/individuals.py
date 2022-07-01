@@ -284,8 +284,6 @@ class Individual(TycheContext):
         return GuardedMutableReference(ref, self.coerce_role_value, self.coerce_role_value)
 
     def observe(self, observation: Concept, likelihood: float = 1, learning_rate: float = 1):
-        print(f"{self.name}: observe {observation}, likelihood={likelihood:.2f}, learning_rate={learning_rate:.2f}")
-
         # If an expectation over a role is observed, then we can apply Bayes' rule to the role.
         if isinstance(observation, Expectation):
             expectation: Expectation = cast(Expectation, observation)
