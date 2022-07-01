@@ -284,6 +284,8 @@ class Individual(TycheContext):
         return GuardedMutableReference(ref, self.coerce_role_value, self.coerce_role_value)
 
     def observe(self, observation: Concept, likelihood: float = 1, learning_rate: float = 1):
+        print(f"{self.name}: observe {observation}, likelihood={likelihood:.2f}, learning_rate={learning_rate:.2f}")
+
         # If an expectation over a role is observed, then we can apply Bayes' rule to the role.
         if isinstance(observation, Expectation):
             expectation: Expectation = cast(Expectation, observation)
@@ -316,10 +318,6 @@ class Individual(TycheContext):
                 if isinstance(child_concept, Constant):
                     continue  # Quick skip
 
-                # The likelihood that this child concept is True given the observation,
-                # P(child|observation) = P(observation|child) * P(child) / P(observation).
-
-                # TODO : The observation should be treated as an application of an uncertain Baye's rule
                 obs_given_child = observation.copy_with_new_child_concept_from_eval_context(index, ALWAYS)
                 obs_given_not_child = observation.copy_with_new_child_concept_from_eval_context(index, NEVER)
 
@@ -334,7 +332,7 @@ class Individual(TycheContext):
                     not_child_prob, observation_prob, obs_given_not_child_prob, likelihood)
 
                 # Corresponds to the learning_rate parameter.
-                child_influence = abs(child_true_prob - child_false_prob)
+                child_influence = abs(obs_given_child_prob - obs_given_not_child_prob)
                 if child_influence <= 0:
                     continue
 
