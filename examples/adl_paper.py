@@ -4,6 +4,7 @@ for Probabilistic Reasoning" by Tim French and Thomas Smoker.
 """
 from tyche.individuals import Individual, TycheConceptField, IdentityIndividual, TycheRoleField
 from tyche.language import Atom, Concept, ExclusiveRoleDist, Expectation, Exists, TycheLanguageException
+from tyche.probability import TycheProbabilityException
 
 
 class VirusTransmissionIndividual(Individual):
@@ -122,7 +123,7 @@ if __name__ == "__main__":
         print(f": Observe {exposed} at Julia")
         model.julia.observe(exposed)
         print(model.to_str(detail_lvl=3, indent_lvl=1))
-    except TycheLanguageException as e:
+    except TycheProbabilityException as e:
         if "impossible" in str(e):
             print(
                 "- Observation at Julia failed as expected, as it would be impossible after "
@@ -130,3 +131,10 @@ if __name__ == "__main__":
             )
         else:
             raise e
+
+    print()
+    not_exposed = exposed.complement()
+    print(f": Reset model, and observe {not_exposed} at Hector")
+    model = VirusTransmissionScenario()
+    model.hector.observe(not_exposed)
+    print(model.to_str(detail_lvl=3, indent_lvl=1))

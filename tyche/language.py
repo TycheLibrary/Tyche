@@ -6,6 +6,7 @@ ADL is designed to support both mathematical notion and a formal english notion.
 """
 from typing import Final, cast, Optional, Union, Tuple, NewType, Callable
 
+from tyche.probability import uncertain_bayes_rule
 from tyche.reference import MutableReference
 from tyche.string_utils import format_dict
 
@@ -159,9 +160,11 @@ class ExclusiveRoleDist:
         remain unchanged.
         """
         if likelihood < 0 or likelihood > 1:
-            raise TycheLanguageException("The likelihood should fall between 0 and 1 inclusive")
+            raise TycheLanguageException(
+                f"The likelihood should fall between 0 and 1 inclusive. It was {likelihood}")
         if learning_rate < 0 or learning_rate > 1:
-            raise TycheLanguageException("The learning_rate should fall between 0 and 1 inclusive")
+            raise TycheLanguageException(
+                f"The learning_rate should fall between 0 and 1 inclusive. It was {learning_rate}")
 
         # If the learning rate is 0, then nothing will be learned.
         if learning_rate == 0:
@@ -173,14 +176,8 @@ class ExclusiveRoleDist:
 
         role_belief: float = Expectation.evaluate_for_role(self, observation, ALWAYS)
 
-        if role_belief == 0 and likelihood != 0:
-            raise TycheLanguageException(
-                "The observation is impossible under this model, but the likelihood of the observation is not 0")
-        if role_belief == 1 and likelihood != 1:
-            raise TycheLanguageException(
-                "The observation is certain under this model, but the likelihood of the observation is not 1")
-
         learned_entries: list[tuple[Optional['TycheContext'], float]] = []
+        total_weight = self.total_weight
         for context, weight in self._entries:
             if context is None:
                 # Can't learn the null-individual
@@ -188,13 +185,10 @@ class ExclusiveRoleDist:
                 continue
 
             belief = context.eval(observation)
-            new_weight = 0
-            if likelihood > 0:
-                obs_correct_weight = weight * belief / role_belief
-                new_weight += likelihood * obs_correct_weight
-            if likelihood < 1:
-                obs_incorrect_weight = weight * (1 - belief) / (1 - role_belief)
-                new_weight += (1 - likelihood) * obs_incorrect_weight
+
+            curr_prob = weight / total_weight
+            new_prob = uncertain_bayes_rule(curr_prob, role_belief, belief, likelihood)
+            new_weight = new_prob * total_weight
 
             learned_weight = learning_rate * new_weight + (1 - learning_rate) * weight
             if learned_weight > 0:
@@ -849,7 +843,6 @@ class Expectation(Concept):
         entries: list[tuple[TycheContext, float]] = []
 
         total_given_prob = 0.0
-        concept_and_given = concept & given
         for other_context, prob in role:
             if other_context is None:
                 continue
@@ -858,9 +851,10 @@ class Expectation(Concept):
             if given_prob <= 0:
                 continue
 
-            true_prob = other_context.eval(concept_and_given)
-            false_prob = 1 - true_prob
-            matches_observation_prob = likelihood * true_prob + (1 - likelihood) * false_prob
+            concept_prob = other_context.eval(concept)
+            given_prob = other_context.eval(given)
+
+            matches_observation_prob = likelihood * concept_prob + (1 - likelihood) * (1 - concept_prob)
             chosen_prob = prob * given_prob
             total_given_prob += chosen_prob
 

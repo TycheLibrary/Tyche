@@ -10,6 +10,7 @@ from tyche.language import ExclusiveRoleDist, TycheLanguageException, TycheConte
 
 # Marks instance variables of classes as probabilities that
 # may be accessed by Tyche formulas.
+from tyche.probability import uncertain_bayes_rule
 from tyche.reference import MutableReference, MutableVariableReference, GuardedMutableReference
 
 TycheConceptField = TypeVar("TycheConceptField", float, int, bool)
@@ -304,8 +305,11 @@ class Individual(TycheContext):
             # Otherwise, we can recurse through the observation.
             observation_prob = self.eval(observation)
             obs_matches_expected_prob = likelihood * observation_prob + (1 - likelihood) * (1 - observation_prob)
-            if obs_matches_expected_prob == 0:
-                raise TycheIndividualsException("The observation is impossible under this model")
+            if obs_matches_expected_prob <= 0:
+                raise TycheIndividualsException(
+                    f"The observation is impossible under this model "
+                    f"({observation} with likelihood {likelihood} @ {self.name})"
+                )
 
             child_concepts = observation.get_child_concepts_in_eval_context()
             for index, child_concept in enumerate(child_concepts):
@@ -314,13 +318,20 @@ class Individual(TycheContext):
 
                 # The likelihood that this child concept is True given the observation,
                 # P(child|observation) = P(observation|child) * P(child) / P(observation).
+
+                # TODO : The observation should be treated as an application of an uncertain Baye's rule
                 obs_given_child = observation.copy_with_new_child_concept_from_eval_context(index, ALWAYS)
                 obs_given_not_child = observation.copy_with_new_child_concept_from_eval_context(index, NEVER)
 
                 child_prob = self.eval(child_concept)
                 not_child_prob = 1 - child_prob
-                child_true_prob = self.eval(obs_given_child) * child_prob / observation_prob
-                child_false_prob = self.eval(obs_given_not_child) * not_child_prob / observation_prob
+                obs_given_child_prob = self.eval(obs_given_child)
+                obs_given_not_child_prob = self.eval(obs_given_not_child)
+
+                child_true_prob = uncertain_bayes_rule(
+                    child_prob, observation_prob, obs_given_child_prob, likelihood)
+                child_false_prob = uncertain_bayes_rule(
+                    not_child_prob, observation_prob, obs_given_not_child_prob, likelihood)
 
                 # Corresponds to the learning_rate parameter.
                 child_influence = abs(child_true_prob - child_false_prob)
