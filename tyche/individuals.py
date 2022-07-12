@@ -121,20 +121,40 @@ class TycheAccessorStore(Generic[AccessedValueType]):
 
 class IndividualPropertyDecorator(Generic[AccessedValueType]):
     """ A decorator to mark methods as providing the value of a concept or role. """
-    def __init__(self, fget: Callable[[], AccessedValueType], *, symbol: Optional[str] = None):
+    def __init__(self, fget: Callable[[any], AccessedValueType], *, symbol: Optional[str] = None):
         self.fget = fget
         self.symbol = symbol
-        self.fset: Optional[Callable[[AccessedValueType], None]] = None
+        self.fset: Optional[Callable[[any, AccessedValueType], None]] = None
+        self.fdel: Optional[Callable[[any], None]] = None
 
-    def updater(self, fset: Optional[Callable[[AccessedValueType], None]]):
+    def __get__(self, instance, owner) -> AccessedValueType:
+        if instance is None:
+            raise TycheIndividualsException("Tyche annotated methods cannot be invoked without an instance")
+        return self.fget(instance)
+
+    def __set__(self, instance, value: AccessedValueType):
+        if instance is None:
+            raise TycheIndividualsException("Tyche annotated methods cannot be invoked without an instance")
+        self.fset(instance, value)
+
+    def __delete__(self, instance):
+        if instance is None:
+            raise TycheIndividualsException("Tyche annotated methods cannot be invoked without an instance")
+        self.fdel(instance)
+
+    def setter(self, fset: Optional[Callable[[any, AccessedValueType], None]]):
         """
         This can be used as a decorator to register a function-based setter for this value.
-        This is called 'updater' instead of 'setter' due to erroneous errors that the function
-        names should match if the method is called 'setter'. I believe this error is to help
-        people when they use @property decorators, but it erroneously gets triggered here as well.
         """
         self.fset = fset
-        return fset
+        return self
+
+    def deleter(self, fdel: Optional[Callable[[any], None]]):
+        """
+        This can be used as a decorator to register a function to be called when del is used.
+        """
+        self.fdel = fdel
+        return self
 
     def __set_name__(self, owner: type, name: str):
         ref_map = TycheAccessorStore.get_accessor_ref_map(type(self))
@@ -146,9 +166,6 @@ class IndividualPropertyDecorator(Generic[AccessedValueType]):
 
         # Add this symbol to the set of function symbols.
         ref_map[owner][name] = FunctionSymbolReference(symbol, self.fget, self.fset)
-
-        # Replace this decorator object with the original function in the object.
-        setattr(owner, name, self.fget)
 
 
 class concept(IndividualPropertyDecorator):

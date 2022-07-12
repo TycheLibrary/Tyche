@@ -26,8 +26,8 @@ class Person(Individual):
     def tall(self) -> float:
         return self.height_cm > self.tall_cutoff
 
-    @tall.updater
-    def set_tall(self, value: float):
+    @tall.setter
+    def tall(self, value: float):
         self.tall_cutoff = self.height_cm.inverse_cdf(1 - value)
 
 
@@ -110,7 +110,7 @@ print("clare is a tall adult = {}".format(tall_and_adult))
 print("P(clare is a tall adult) = {:.3f}".format(clare.eval(tall_and_adult)))
 print(f".. Clare's current tall_cutoff = {clare.tall_cutoff:.1f} cm, P(tall) = {clare.eval('tall'):.3f}")
 print(".. Update clare's tall probability to 20%")
-Atom("tall").eval_reference(clare).set(0.2)
+clare.tall = 0.2
 print(f".. Clare's new tall_cutoff = {clare.tall_cutoff:.1f} cm, P(tall) = {clare.eval('tall'):.3f}")
 print("P(clare is a tall adult) = {:.3f}".format(clare.eval(tall_and_adult)))
 print()
