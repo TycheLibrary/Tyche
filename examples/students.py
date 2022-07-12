@@ -15,12 +15,8 @@ class Person(Individual):
         super().__init__(name=name)
         self.age = UniformDist(0, 120)
         self.height_cm = NormalDist(170.8, 7).truncate(10, 272)
+        self.tall_cutoff = 6 * 30.48  # 6 feet in cm
         self.is_male = False
-
-    @property
-    def height_ft(self):
-        """ Returns the distribution of height in feet. """
-        return self.height_cm * 0.0328084
 
     @concept
     def adult(self) -> float:
@@ -28,8 +24,11 @@ class Person(Individual):
 
     @concept
     def tall(self) -> float:
-        """ We consider anyone over 6 feet to be tall. """
-        return self.height_ft > 6
+        return self.height_cm > self.tall_cutoff
+
+    @tall.updater
+    def set_tall(self, value: float):
+        self.tall_cutoff = self.height_cm.inverse_cdf(1 - value)
 
 
 class Student(Person):
@@ -96,8 +95,9 @@ print()
 #     Conditional(condition=adult, if_yes=Concept('X'), if_no=No) where X is a new String
 
 supervisor_WWCC = Exists("supervisor") & Expectation("supervisor", "wwcc")
-tall_adult = Atom("adult") & Atom("tall")
-supervisor_tall_adult = Exists("supervisor") & Expectation("supervisor", tall_adult)
+tall_and_adult = Atom("adult") & Atom("tall")
+tall_or_adult = Atom("adult") | Atom("tall")
+supervisor_tall_adult = Exists("supervisor") & Expectation("supervisor", tall_and_adult)
 supervisor = Role('supervisor')  # supervisor is a role object wih functions is, is_not, is_given
 
 print()
@@ -106,8 +106,13 @@ print("P(clare is an adult) = {:.3f}".format(clare.eval("adult")))
 print("P(clare passed) = {:.3f}".format(clare.eval("passed")))
 print("P(clare is tall) = {:.3f}".format(clare.eval("tall")))
 print()
-print("clare is a tall adult = {}".format(tall_adult))
-print("P(clare is a tall adult) = {:.3f}".format(clare.eval(tall_adult)))
+print("clare is a tall adult = {}".format(tall_and_adult))
+print("P(clare is a tall adult) = {:.3f}".format(clare.eval(tall_and_adult)))
+print(f".. Clare's current tall_cutoff = {clare.tall_cutoff:.1f} cm, P(tall) = {clare.eval('tall'):.3f}")
+print(".. Update clare's tall probability to 20%")
+Atom("tall").eval_reference(clare).set(0.2)
+print(f".. Clare's new tall_cutoff = {clare.tall_cutoff:.1f} cm, P(tall) = {clare.eval('tall'):.3f}")
+print("P(clare is a tall adult) = {:.3f}".format(clare.eval(tall_and_adult)))
 print()
 print("clare's supervisor is a tall adult = {}".format(supervisor_tall_adult))
 print("P(clare's supervisor is a tall adult) = {:.3f}".format(clare.eval(supervisor_tall_adult)))

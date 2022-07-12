@@ -11,7 +11,8 @@ from tyche.language import ExclusiveRoleDist, TycheLanguageException, TycheConte
 # Marks instance variables of classes as probabilities that
 # may be accessed by Tyche formulas.
 from tyche.probability import uncertain_bayes_rule
-from tyche.reference import MutableReference, MutableVariableReference, GuardedMutableReference
+from tyche.reference import SymbolReference, PropertySymbolReference, GuardedSymbolReference, FunctionSymbolReference, \
+    BakedSymbolReference
 
 TycheConceptField = TypeVar("TycheConceptField", float, int, bool)
 TycheRoleField = TypeVar("TycheRoleField", bound=ExclusiveRoleDist)
@@ -33,73 +34,63 @@ class TycheAccessorStore(Generic[AccessedValueType]):
     Stores a set of ways to access concepts or roles from a Tyche individual.
     """
     # Stores all the accessors for atoms & roles of Individual subclass types.
-    __accessor_maps: Final[dict[type, dict[type, 'TycheAccessorStore']]] = {}
-    # Stores all the accessors function names for atoms & roles of Individual subclass types.
-    __accessor_function_maps: Final[dict[type, dict[type, set[str]]]] = {}
+    __accessor_store_maps: Final[dict[type, dict[type, 'TycheAccessorStore']]] = {}
+    # Stores all the non-field accessor references for atoms & roles of Individual subclass types.
+    __accessor_ref_maps: Final[dict[type, dict[type, dict[str, SymbolReference[AccessedValueType]]]]] = {}
 
-    def __init__(self, type_name: str, variables: set[str], functions: set[str]):
+    def __init__(self, type_name: str, accessors: dict[str, SymbolReference[AccessedValueType]]):
         self.type_name = type_name
-        self.variables = variables
-        self.functions = functions
-        self.all_symbols = variables.union(functions)
+        self.accessors = accessors
+        self.all_symbols = set(accessors.keys())
+
+    def get_reference(self, symbol: str) -> SymbolReference[AccessedValueType]:
+        """ Returns the reference to access the given symbol. """
+        try:
+            return self.accessors[symbol]
+        except KeyError:
+            raise TycheLanguageException("Unknown {} {}".format(
+                self.type_name, symbol
+            ))
 
     def get(self, obj: any, symbol: str) -> AccessedValueType:
         """ Accesses the given symbol from the given object. """
-        if symbol in self.variables:
-            return getattr(obj, symbol)
-        elif symbol in self.functions:
-            return getattr(obj, symbol)()
-        else:
-            raise TycheLanguageException("Unknown {} {} for type {}".format(
-                self.type_name, symbol, type(obj).__name__
-            ))
+        return self.get_reference(symbol).get(obj)
 
-    def get_mutable(self, obj: any, symbol: str) -> MutableReference[AccessedValueType, AccessedValueType]:
-        """ Accesses the given symbol from the given object. """
-        if symbol in self.variables:
-            return MutableVariableReference(obj, symbol)
-        elif symbol in self.functions:
-            raise TycheLanguageException(
-                f"The {self.type_name} {symbol} for type {type(obj).__key__} is not mutable. "
-                f"It is a function, not a variable"
-            )
-        else:
-            raise TycheLanguageException("Unknown {} {} for type {}".format(
-                self.type_name, symbol, type(obj).__key__
-            ))
+    def set(self, obj: any, symbol: str, value: AccessedValueType):
+        """ Modifies the given symbol in the given object. """
+        return self.get_reference(symbol).set(obj, value)
 
     @staticmethod
-    def get_accessors_map(accessor_type: type) -> dict[type, 'TycheAccessorStore']:
+    def get_accessor_stores_map(accessor_type: type) -> dict[type, 'TycheAccessorStore']:
         """ Returns a map from Individual subclass types to their accessor stores for the given type of accessors. """
-        accessor_maps = TycheAccessorStore.__accessor_maps
-        if accessor_type not in accessor_maps:
-            accessor_maps[accessor_type] = {}
-        return accessor_maps[accessor_type]
+        accessor_store_maps = TycheAccessorStore.__accessor_store_maps
+        if accessor_type not in accessor_store_maps:
+            accessor_store_maps[accessor_type] = {}
+        return accessor_store_maps[accessor_type]
 
     @staticmethod
-    def get_accessor_functions_map(accessor_type: type) -> dict[type, set[str]]:
+    def get_accessor_ref_map(accessor_type: type) -> dict[type, dict[str, SymbolReference[AccessedValueType]]]:
         """ Returns a map from Individual subclass types to their accessor stores for the given type of accessors. """
-        accessor_function_maps = TycheAccessorStore.__accessor_function_maps
-        if accessor_type not in accessor_function_maps:
-            accessor_function_maps[accessor_type] = {}
-        return accessor_function_maps[accessor_type]
+        accessor_ref_maps = TycheAccessorStore.__accessor_ref_maps
+        if accessor_type not in accessor_ref_maps:
+            accessor_ref_maps[accessor_type] = {}
+        return accessor_ref_maps[accessor_type]
 
     @staticmethod
     def get_or_populate_for(obj_type: type, accessor_type: type, field_type_hint: type) -> 'TycheAccessorStore':
         """
         Gets or populates the set of accessors associated with obj_type, and returns them.
         """
-        accessor_map = TycheAccessorStore.get_accessors_map(accessor_type)
-        if obj_type in accessor_map:
-            return accessor_map[obj_type]
+        stores_cache_map = TycheAccessorStore.get_accessor_stores_map(accessor_type)
+        if obj_type in stores_cache_map:
+            return stores_cache_map[obj_type]
 
-        # Get the set of functions that can be called on objects of obj_type.
-        # We need to get the functions of all the type's parent classes as well.
-        functions: set[str] = set()
-        functions_map = TycheAccessorStore.get_accessor_functions_map(accessor_type)
-        for method_resolution_type in obj_type.mro():
-            if method_resolution_type in functions_map:
-                functions.update(functions_map[method_resolution_type])
+        # Get the references populated by annotations.
+        refs_map = TycheAccessorStore.get_accessor_ref_map(accessor_type)
+        method_references: dict[str, SymbolReference[AccessedValueType]] = {}
+        for parent_or_obj_type in obj_type.mro():
+            if parent_or_obj_type in refs_map:
+                method_references.update(refs_map[parent_or_obj_type])
 
         # Get the set of variables that can be accessed from obj_type.
         # These include the fields from parent classes automatically.
@@ -107,46 +98,57 @@ class TycheAccessorStore(Generic[AccessedValueType]):
         for symbol, type_hint in get_type_hints(obj_type).items():
             if type_hint == field_type_hint:
                 variables.add(symbol)
-                if symbol in functions:
+                if symbol in method_references:
                     raise TycheIndividualsException(
-                        "The {} {} in type {} cannot be provided as both a variable and a function".format(
+                        "The {} {} in type {} cannot be provided as both a variable and a method".format(
                             accessor_type.__name__, symbol, obj_type.__name__
                         ))
 
-        # Check that there are no duplicate names.
-        intersection = variables.intersection(functions)
-        if len(intersection) > 0:
-            raise TycheIndividualsException("The symbol {} cannot be provided as both a variable and a function".format(
-                list(intersection)[0]
-            ))
-
         # Check that all the symbol names are valid.
-        for symbol_name, name_set in [("variable", variables), ("method", functions)]:
+        for symbol_name, name_set in [("variable", variables), ("method", method_references.keys())]:
             symbol_type_name = accessor_type.__name__.capitalize()
             context = "type {}".format(obj_type.__name__)
             for name in name_set:
                 Atom.check_symbol(name, symbol_name=symbol_name, symbol_type_name=symbol_type_name, context=context)
 
         # Store the accessors in the type object.
-        accessors = TycheAccessorStore(accessor_type.__name__, variables, functions)
-        accessor_map[obj_type] = accessors
+        var_references = {symbol: PropertySymbolReference(symbol) for symbol in variables}
+        all_references = {**method_references, **var_references}
+        accessors = TycheAccessorStore(accessor_type.__name__, all_references)
+        stores_cache_map[obj_type] = accessors
         return accessors
 
 
-class IndividualPropertyDecorator:
+class IndividualPropertyDecorator(Generic[AccessedValueType]):
     """ A decorator to mark methods as providing the value of a concept or role. """
-    def __init__(self, fn: Callable[[], ExclusiveRoleDist]):
-        self.fn = fn
+    def __init__(self, fget: Callable[[], AccessedValueType], *, symbol: Optional[str] = None):
+        self.fget = fget
+        self.symbol = symbol
+        self.fset: Optional[Callable[[AccessedValueType], None]] = None
+
+    def updater(self, fset: Optional[Callable[[AccessedValueType], None]]):
+        """
+        This can be used as a decorator to register a function-based setter for this value.
+        This is called 'updater' instead of 'setter' due to erroneous errors that the function
+        names should match if the method is called 'setter'. I believe this error is to help
+        people when they use @property decorators, but it erroneously gets triggered here as well.
+        """
+        self.fset = fset
+        return fset
 
     def __set_name__(self, owner: type, name: str):
-        functions_map = TycheAccessorStore.get_accessor_functions_map(type(self))
-        if owner not in functions_map:
-            functions_map[owner] = set()
+        ref_map = TycheAccessorStore.get_accessor_ref_map(type(self))
+        if owner not in ref_map:
+            ref_map[owner] = {}
+
+        # Allow the user to override the symbol that is used.
+        symbol = name if self.symbol is None else self.symbol
 
         # Add this symbol to the set of function symbols.
-        functions_map[owner].add(name)
-        # Replace this decorated function with the actual function.
-        setattr(owner, name, self.fn)
+        ref_map[owner][name] = FunctionSymbolReference(symbol, self.fget, self.fset)
+
+        # Replace this decorator object with the original function in the object.
+        setattr(owner, name, self.fget)
 
 
 class concept(IndividualPropertyDecorator):
@@ -257,9 +259,10 @@ class Individual(TycheContext):
         value = self.concepts.get(self, symbol)
         return self.coerce_concept_value(value)
 
-    def get_mutable_concept(self, symbol: str) -> MutableReference[float, float]:
-        ref = self.concepts.get_mutable(self, symbol)
-        return GuardedMutableReference(ref, self.coerce_concept_value, self.coerce_concept_value)
+    def get_concept_reference(self, symbol: str) -> BakedSymbolReference[float]:
+        ref = self.concepts.get_reference(symbol)
+        coerced_ref = GuardedSymbolReference(ref, self.coerce_concept_value, self.coerce_concept_value)
+        return coerced_ref.bake(self)
 
     @classmethod
     def coerce_role_value(cls: type, value: any) -> ExclusiveRoleDist:
@@ -272,22 +275,23 @@ class Individual(TycheContext):
 
         raise TycheIndividualsException(
             f"Error in {cls.__name__}: Role values must be of type "
-            f"WeightedRoleDistribution, not {type(value).__name__}"
+            f"{type(ExclusiveRoleDist).__name__}, not {type(value).__name__}"
         )
 
     def get_role(self, symbol: str) -> ExclusiveRoleDist:
         value = self.roles.get(self, symbol)
         return self.coerce_role_value(value)
 
-    def get_mutable_role(self, symbol: str) -> MutableReference[ExclusiveRoleDist, ExclusiveRoleDist]:
-        ref = self.roles.get_mutable(self, symbol)
-        return GuardedMutableReference(ref, self.coerce_role_value, self.coerce_role_value)
+    def get_role_reference(self, symbol: str) -> SymbolReference[ExclusiveRoleDist]:
+        ref = self.roles.get_reference(symbol)
+        coerced_ref = GuardedSymbolReference(ref, self.coerce_role_value, self.coerce_role_value)
+        return coerced_ref.bake(self)
 
     def observe(self, observation: Concept, likelihood: float = 1, learning_rate: float = 1):
         # If an expectation over a role is observed, then we can apply Bayes' rule to the role.
         if isinstance(observation, Expectation):
             expectation: Expectation = cast(Expectation, observation)
-            observed_role_ref = expectation.role.eval_mutable(self)
+            observed_role_ref = expectation.role.eval_reference(self)
             prev_role_value = observed_role_ref.get()
             new_role_value = prev_role_value.apply_bayes_rule(expectation.concept, likelihood, learning_rate)
             observed_role_ref.set(new_role_value)
@@ -423,11 +427,11 @@ class IdentityIndividual(TycheContext):
         raise TycheIndividualsException(
             f"Cannot evaluate atoms for instances of {type(self).__name__}. eval should be used instead")
 
-    def get_mutable_concept(self, symbol: str) -> MutableReference[float, float]:
+    def get_concept_reference(self, symbol: str) -> SymbolReference[float]:
         raise TycheIndividualsException(
             f"Cannot evaluate mutable concepts for instances of {type(self).__name__}")
 
-    def get_mutable_role(self, symbol: str) -> MutableReference[ExclusiveRoleDist, ExclusiveRoleDist]:
+    def get_role_reference(self, symbol: str) -> SymbolReference[ExclusiveRoleDist]:
         raise TycheIndividualsException(
             f"Cannot evaluate mutable roles for instances of {type(self).__name__}")
 

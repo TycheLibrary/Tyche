@@ -7,7 +7,7 @@ ADL is designed to support both mathematical notion and a formal english notion.
 from typing import Final, cast, Optional, Union, Tuple, NewType, Callable
 
 from tyche.probability import uncertain_bayes_rule
-from tyche.reference import MutableReference
+from tyche.reference import SymbolReference, BakedSymbolReference
 from tyche.string_utils import format_dict
 
 
@@ -227,8 +227,13 @@ class ExclusiveRoleDist:
         sub_detail_lvl = detail_lvl - 1
         sub_indent_lvl = 0 if indent_lvl == 0 else indent_lvl + 1
 
-        def format_prob(prob: int): return f"{100 * prob:.1f}%"
-        def format_ctx(ctx: TycheContext): return ctx.to_str(detail_lvl=sub_detail_lvl, indent_lvl=sub_indent_lvl)
+        def format_prob(prob: int):
+            return f"{100 * prob:.1f}%"
+
+        def format_ctx(ctx: TycheContext):
+            if ctx is None:
+                return "<None context>"
+            return ctx.to_str(detail_lvl=sub_detail_lvl, indent_lvl=sub_indent_lvl)
 
         key_values = [(prob, ctx) for ctx, prob in self]
         return format_dict(key_values, key_format_fn=format_prob, val_format_fn=format_ctx, indent_lvl=indent_lvl)
@@ -287,14 +292,14 @@ class TycheContext:
         """
         raise NotImplementedError("eval_role is unimplemented for " + type(self).__name__)
 
-    def get_mutable_concept(self, symbol: str) -> MutableReference[float, float]:
+    def get_concept_reference(self, symbol: str) -> BakedSymbolReference[float]:
         """
         Gets a mutable reference to the probability of the atom with the given symbol
         being true. This reference can be used to get and set the value of the atom.
         """
         raise NotImplementedError("eval_mutable_concept is unimplemented for " + type(self).__name__)
 
-    def get_mutable_role(self, symbol: str) -> MutableReference[ExclusiveRoleDist, ExclusiveRoleDist]:
+    def get_role_reference(self, symbol: str) -> BakedSymbolReference[ExclusiveRoleDist]:
         """
         Gets a mutable reference to the role distribution of the role with the
         given symbol. This reference can be used to get and set the value of the role.
@@ -329,10 +334,10 @@ class EmptyContext(TycheContext):
     def get_role(self, symbol: str) -> ExclusiveRoleDist:
         raise TycheLanguageException("Unknown role {}".format(symbol))
 
-    def get_mutable_concept(self, symbol: str) -> float:
+    def get_concept_reference(self, symbol: str) -> float:
         raise TycheLanguageException("Unknown atom {}".format(symbol))
 
-    def get_mutable_role(self, symbol: str) -> ExclusiveRoleDist:
+    def get_role_reference(self, symbol: str) -> ExclusiveRoleDist:
         raise TycheLanguageException("Unknown role {}".format(symbol))
 
     def to_str(self, *, detail_lvl: int = 1, indent_lvl: int = 0):
@@ -534,9 +539,9 @@ class Atom(Concept):
     def direct_eval(self, context: TycheContext) -> float:
         return context.get_concept(self.symbol)
 
-    def eval_mutable(self, context: TycheContext) -> MutableReference[float, float]:
+    def eval_reference(self, context: TycheContext) -> BakedSymbolReference[float]:
         """ Evaluates to a mutable reference to the value of this atom. """
-        return context.get_mutable_concept(self.symbol)
+        return context.get_concept_reference(self.symbol)
 
     def normal_form(self):
         return self
@@ -579,10 +584,9 @@ class Role:
     def direct_eval(self, context: TycheContext) -> ExclusiveRoleDist:
         return context.get_role(self.symbol)
 
-    def eval_mutable(
-            self, context: TycheContext) -> MutableReference[ExclusiveRoleDist, ExclusiveRoleDist]:
+    def eval_reference(self, context: TycheContext) -> BakedSymbolReference[ExclusiveRoleDist]:
         """ Evaluates to a mutable reference to the value of this role. """
-        return context.get_mutable_role(self.symbol)
+        return context.get_role_reference(self.symbol)
 
 
 class Constant(Atom):
