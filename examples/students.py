@@ -22,12 +22,12 @@ class Person(Individual):
     def adult(self) -> float:
         return self.age >= 18
 
-    @concept
-    def tall(self) -> float:
+    @concept(symbol="tall")
+    def is_tall(self) -> float:
         return self.height_cm > self.tall_cutoff
 
-    @tall.setter
-    def tall(self, value: float):
+    @is_tall.setter
+    def is_tall(self, value: float):
         self.tall_cutoff = self.height_cm.inverse_cdf(1 - value)
 
 
@@ -64,7 +64,7 @@ class Supervisor(Person):
         self.age = self.age.truncate(21, 120)
         self._wwcc = wwcc
 
-    @concept
+    @TycheConceptDecorator
     def wwcc(self):
         """ Whether the supervisor has a working with childrens check. """
         return self._wwcc

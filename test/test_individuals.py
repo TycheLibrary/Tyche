@@ -32,7 +32,7 @@ class TestIndividual(Individual):
         self.role_var = ExclusiveRoleDist()
         self.role_var.add(self.sub1)
 
-    @role
+    @TycheRoleDecorator
     def sub(self) -> ExclusiveRoleDist:
         dist = ExclusiveRoleDist()
         dist.add(self.sub1, self.sub1Ratio)

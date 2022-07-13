@@ -1,7 +1,7 @@
 """
 Provides convenience classes for setting up a model using classes.
 """
-from typing import TypeVar, Callable, get_type_hints, Final, Type, cast, Generic, Optional
+from typing import TypeVar, Callable, get_type_hints, Final, Type, cast, Generic, Optional, Union, overload
 
 import numpy as np
 
@@ -13,6 +13,9 @@ from tyche.language import ExclusiveRoleDist, TycheLanguageException, TycheConte
 from tyche.probability import uncertain_bayes_rule
 from tyche.reference import SymbolReference, PropertySymbolReference, GuardedSymbolReference, FunctionSymbolReference, \
     BakedSymbolReference
+
+TycheConceptValue = TypeVar("TycheConceptValue", float, int, bool)
+TycheRoleValue = TypeVar("TycheRoleValue", bound=ExclusiveRoleDist)
 
 TycheConceptField = TypeVar("TycheConceptField", float, int, bool)
 TycheRoleField = TypeVar("TycheRoleField", bound=ExclusiveRoleDist)
@@ -122,37 +125,44 @@ class TycheAccessorStore(Generic[AccessedValueType]):
 class IndividualPropertyDecorator(Generic[AccessedValueType]):
     """ A decorator to mark methods as providing the value of a concept or role. """
     def __init__(self, fget: Callable[[any], AccessedValueType], *, symbol: Optional[str] = None):
+        self.custom_symbol = symbol
+        self.symbol = symbol if symbol is not None else "This symbol"
         self.fget = fget
-        self.symbol = symbol
         self.fset: Optional[Callable[[any, AccessedValueType], None]] = None
         self.fdel: Optional[Callable[[any], None]] = None
 
-    def __get__(self, instance, owner) -> AccessedValueType:
+    def __get__(self, instance: None, owner) -> Union[AccessedValueType, 'IndividualPropertyDecorator']:
         if instance is None:
-            raise TycheIndividualsException("Tyche annotated methods cannot be invoked without an instance")
+            return self
         return self.fget(instance)
 
     def __set__(self, instance, value: AccessedValueType):
         if instance is None:
-            raise TycheIndividualsException("Tyche annotated methods cannot be invoked without an instance")
+            raise TycheIndividualsException(f"{self.symbol} can only be modified on an instance")
+
+        if self.fset is None:
+            raise TycheIndividualsException(f"{self.symbol} does not provide a setter method")
         self.fset(instance, value)
 
     def __delete__(self, instance):
         if instance is None:
-            raise TycheIndividualsException("Tyche annotated methods cannot be invoked without an instance")
+            raise TycheIndividualsException(f"{self.symbol} can only be modified on an instance")
+
+        if self.fdel is None:
+            raise TycheIndividualsException(f"{self.symbol} does not provide a deleter method")
         self.fdel(instance)
 
-    def setter(self, fset: Optional[Callable[[any, AccessedValueType], None]]):
-        """
-        This can be used as a decorator to register a function-based setter for this value.
-        """
+    def setter(self, fset: Callable[[any, AccessedValueType], None]):
+        """ This can be used as a decorator to register a function-based setter for this symbol. """
+        if self.fset is not None:
+            raise TycheIndividualsException(f"{self.symbol} already has a setter method")
         self.fset = fset
         return self
 
-    def deleter(self, fdel: Optional[Callable[[any], None]]):
-        """
-        This can be used as a decorator to register a function to be called when del is used.
-        """
+    def deleter(self, fdel: Callable[[any], None]):
+        """ This can be used as a decorator to register a function-based deleter for this symbol. """
+        if self.fdel is not None:
+            raise TycheIndividualsException(f"{self.symbol} already has a deleter method")
         self.fdel = fdel
         return self
 
@@ -162,40 +172,66 @@ class IndividualPropertyDecorator(Generic[AccessedValueType]):
             ref_map[owner] = {}
 
         # Allow the user to override the symbol that is used.
-        symbol = name if self.symbol is None else self.symbol
+        self.symbol = name if self.custom_symbol is None else self.custom_symbol
 
         # Add this symbol to the set of function symbols.
-        ref_map[owner][name] = FunctionSymbolReference(symbol, self.fget, self.fset)
+        ref_map[owner][self.symbol] = FunctionSymbolReference(self.symbol, self.fget, self.fset)
 
 
-class concept(IndividualPropertyDecorator):
+class TycheConceptDecorator(IndividualPropertyDecorator):
     """
     Marks that a method provides the value of a concept for use in Tyche formulas.
     The name of the function is used as the name of the concept in formulas.
     """
     field_type_hint: Final[type] = TycheConceptField
 
-    def __init__(self, fn: Callable[[], ExclusiveRoleDist]):
-        super().__init__(fn)
+    def __init__(self, fn: Callable[[], TycheConceptValue], *, symbol: Optional[str] = None):
+        super().__init__(fn, symbol=symbol)
 
     @staticmethod
     def get(obj_type: Type['Individual']) -> TycheAccessorStore:
-        return TycheAccessorStore.get_or_populate_for(obj_type, concept, concept.field_type_hint)
+        return TycheAccessorStore.get_or_populate_for(
+            obj_type, TycheConceptDecorator, TycheConceptDecorator.field_type_hint
+        )
 
 
-class role(IndividualPropertyDecorator):
+class TycheRoleDecorator(IndividualPropertyDecorator):
     """
     Marks that a method provides the value of a role for use in Tyche formulas.
     The name of the function is used as the name of the role in formulas.
     """
     field_type_hint: Final[type] = TycheRoleField
 
-    def __init__(self, fn: Callable[[], ExclusiveRoleDist]):
-        super().__init__(fn)
+    def __init__(self, fn: Callable[[], TycheRoleValue], *, symbol: Optional[str] = None):
+        super().__init__(fn, symbol=symbol)
 
     @staticmethod
     def get(obj_type: Type['Individual']) -> TycheAccessorStore:
-        return TycheAccessorStore.get_or_populate_for(obj_type, role, role.field_type_hint)
+        return TycheAccessorStore.get_or_populate_for(
+            obj_type, TycheRoleDecorator, TycheRoleDecorator.field_type_hint
+        )
+
+
+def concept(fn: Optional[Callable[[], TycheConceptValue]] = None, *, symbol: Optional[str] = None):
+    """ Registers a function as supplying the value of a concept for the evaluation of Tyche expressions. """
+    def annotator(inner_fn: Callable[[], TycheConceptValue]):
+        return TycheConceptDecorator(inner_fn, symbol=symbol)
+
+    if fn is None:
+        return annotator
+    else:
+        return annotator(fn)
+
+
+def role(fn: Optional[Callable[[], TycheRoleValue]] = None, *, symbol: Optional[str] = None):
+    """ Registers a function as supplying the value of a role for the evaluation of Tyche expressions. """
+    def annotator(inner_fn: Callable[[], TycheRoleValue]):
+        return TycheRoleDecorator(inner_fn, symbol=symbol)
+
+    if fn is None:
+        return annotator
+    else:
+        return annotator(fn)
 
 
 class Individual(TycheContext):
@@ -217,8 +253,8 @@ class Individual(TycheContext):
     def __init__(self, name: Optional[str] = None):
         super().__init__()
         self.name = name
-        self.concepts = concept.get(type(self))
-        self.roles = role.get(type(self))
+        self.concepts = TycheConceptDecorator.get(type(self))
+        self.roles = TycheRoleDecorator.get(type(self))
 
     def eval(self, concept: CompatibleWithConcept) -> float:
         # The Given operator does nothing when evaluated at a regular individual.
@@ -240,12 +276,12 @@ class Individual(TycheContext):
     @staticmethod
     def get_concept_names(obj_type: Type['Individual']) -> set[str]:
         """ Returns all the concept names of the given Individual type. """
-        return concept.get(obj_type).all_symbols
+        return TycheConceptDecorator.get(obj_type).all_symbols
 
     @staticmethod
     def get_role_names(obj_type: Type['Individual']) -> set[str]:
         """ Returns all the role names of the given Individual type. """
-        return role.get(obj_type).all_symbols
+        return TycheRoleDecorator.get(obj_type).all_symbols
 
     @classmethod
     def coerce_concept_value(cls: type, value: any) -> float:
