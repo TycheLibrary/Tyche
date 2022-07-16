@@ -3,6 +3,8 @@ Example python class for prototyping usage of the package
 This example is for tracking student performance (grades)
 and likely project supervisor.
 """
+import sys
+
 from tyche.individuals import *
 from tyche.distributions import *
 from tyche.language import *
@@ -14,7 +16,7 @@ class Person(Individual):
     def __init__(self, name: str = None):
         super().__init__(name=name)
         self.age = UniformDist(0, 120)
-        self.height_cm = NormalDist(170.8, 7).truncate(10, 272)
+        self.height_cm = NormalDist(170.8, 7)
         self.tall_cutoff = 6 * 30.48  # 6 feet in cm
         self.is_male = False
 
@@ -27,8 +29,14 @@ class Person(Individual):
         return self.height_cm > self.tall_cutoff
 
     @is_tall.setter
-    def is_tall(self, value: float):
-        self.tall_cutoff = self.height_cm.inverse_cdf(1 - value)
+    def is_tall(self, prob: float):
+        # Move the mean of the height distribution to a point where
+        # is_tall would return prob.
+        current_mean = self.height_cm.mean()
+        std_dev = self.height_cm.std_dev()
+        new_z_score = (self.height_cm.inverse_cdf(prob) - current_mean) / std_dev
+        new_mean = self.tall_cutoff + new_z_score * std_dev
+        self.height_cm = NormalDist(new_mean, std_dev)
 
 
 class Student(Person):
@@ -64,9 +72,13 @@ class Supervisor(Person):
         self.age = self.age.truncate(21, 120)
         self._wwcc = wwcc
 
-    @TycheConceptDecorator
-    def wwcc(self):
-        """ Whether the supervisor has a working with childrens check. """
+    @concept
+    def student(self) -> float:
+        return 0.0
+
+    @concept(symbol="wwcc")
+    def has_working_with_children_check(self):
+        """ Whether the supervisor has a working with children check. """
         return self._wwcc
 
 
@@ -108,10 +120,10 @@ print("P(clare is tall) = {:.3f}".format(clare.eval("tall")))
 print()
 print("clare is a tall adult = {}".format(tall_and_adult))
 print("P(clare is a tall adult) = {:.3f}".format(clare.eval(tall_and_adult)))
-print(f".. Clare's current tall_cutoff = {clare.tall_cutoff:.1f} cm, P(tall) = {clare.eval('tall'):.3f}")
+print(f".. Clare's current height mean = {clare.height_cm.mean():.1f} cm, P(tall) = {clare.eval('tall'):.3f}")
 print(".. Update clare's tall probability to 20%")
-clare.tall = 0.2
-print(f".. Clare's new tall_cutoff = {clare.tall_cutoff:.1f} cm, P(tall) = {clare.eval('tall'):.3f}")
+clare.is_tall = 0.2
+print(f".. Clare's new height mean = {clare.height_cm.mean():.1f} cm, P(tall) = {clare.eval('tall'):.3f}")
 print("P(clare is a tall adult) = {:.3f}".format(clare.eval(tall_and_adult)))
 print()
 print("clare's supervisor is a tall adult = {}".format(supervisor_tall_adult))

@@ -2,6 +2,7 @@
 This file contains the definitions of probability
 distributions to be used with Tyche.
 """
+import math
 from typing import Union
 
 import numpy as np
@@ -60,6 +61,18 @@ class ContinuousProbDist(ProbDist):
         """ Evaluates the cumulative density function at x. """
         raise NotImplementedError("cdf is unimplemented for " + type(self).__name__)
 
+    def mean(self) -> float:
+        """ Evaluates the mean of this distribution. """
+        return self.inverse_cdf(0.5)
+
+    def variance(self) -> float:
+        """ Evaluates the variance of this distribution. """
+        raise NotImplementedError("variance is unimplemented for " + type(self).__name__)
+
+    def std_dev(self) -> float:
+        """ Evaluates the standard deviation of this distribution. """
+        return math.sqrt(self.variance())
+
     def pdf(self, x: ArrayLike) -> ArrayLike:
         """ Evaluates the probability density function at x. """
         raise NotImplementedError("pdf is unimplemented for " + type(self).__name__)
@@ -107,7 +120,7 @@ class ContinuousProbDist(ProbDist):
             return self._scale(float(other))
 
         # Distribution multiplications such as UniformDist(0, 1) * UniformDist(0.5, 1)
-        raise NotImplementedError("Addition of distributions is not yet implemented")
+        raise NotImplementedError("Multiplication of distributions is not yet implemented")
 
     def __rmul__(self, other: ProbDistLike) -> 'ContinuousProbDist':
         return self * other  # Mul is commutative
@@ -208,6 +221,9 @@ class LinearTransformContinuousProbDist(ContinuousProbDist):
     def cdf(self, x: ArrayLike) -> ArrayLike:
         values = self._dist.cdf(self._inverse_transform(x))
         return values if self._linear_scale >= 0 else 1 - values
+
+    def variance(self) -> float:
+        return self._dist.variance() * self._linear_scale**2
 
     def pdf(self, x: ArrayLike) -> ArrayLike:
         return self._dist.pdf(self._inverse_transform(x)) * self._pdf_mul
@@ -357,6 +373,12 @@ class NormalDist(ContinuousProbDist):
 
     def cdf(self, x: ArrayLike) -> ArrayLike:
         return stats.norm.cdf(x, loc=self._mean, scale=self._std_dev)
+
+    def variance(self) -> float:
+        return self._std_dev**2
+
+    def std_dev(self) -> float:
+        return self._std_dev
 
     def pdf(self, x: ArrayLike) -> ArrayLike:
         return stats.norm.pdf(x, loc=self._mean, scale=self._std_dev)
