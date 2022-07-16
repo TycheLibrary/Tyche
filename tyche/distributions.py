@@ -334,6 +334,9 @@ class UniformDist(ContinuousProbDist):
     def cdf(self, x: ArrayLike) -> ArrayLike:
         return stats.uniform.cdf(x, loc=self._minimum, scale=self._maximum - self._minimum)
 
+    def variance(self) -> float:
+        return (self._maximum - self._minimum)**2 / 12
+
     def pdf(self, x: ArrayLike) -> ArrayLike:
         return stats.uniform.pdf(x, loc=self._minimum, scale=self._maximum - self._minimum)
 
