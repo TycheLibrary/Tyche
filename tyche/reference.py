@@ -25,13 +25,13 @@ class SymbolReference(Generic[SymbolType]):
     def is_mutable(self) -> bool:
         raise NotImplementedError(f"is_mutable is not implemented for {type(self).__name__}")
 
-    def get(self, obj: any) -> SymbolType:
+    def get(self, obj: object) -> SymbolType:
         raise NotImplementedError(f"get is not implemented for {type(self).__name__}")
 
-    def set(self, obj: any, value: SymbolType):
+    def set(self, obj: object, value: SymbolType):
         raise NotImplementedError(f"set is not implemented for {type(self).__name__}")
 
-    def bake(self, obj: any) -> 'BakedSymbolReference':
+    def bake(self, obj: object) -> 'BakedSymbolReference':
         return BakedSymbolReference(self, obj)
 
 
@@ -40,7 +40,7 @@ class BakedSymbolReference(Generic[SymbolType]):
     Represents a reference to the value of a symbol,
     with the object that the value is accessed from baked in.
     """
-    def __init__(self, ref: SymbolReference[SymbolType], obj: any):
+    def __init__(self, ref: SymbolReference[SymbolType], obj: object):
         self.ref = ref
         self.obj = obj
 
@@ -62,10 +62,10 @@ class PropertySymbolReference(Generic[SymbolType], SymbolReference[SymbolType]):
     def is_mutable(self) -> bool:
         return True
 
-    def get(self, obj: any) -> SymbolType:
+    def get(self, obj: object) -> SymbolType:
         return getattr(obj, self.symbol)
 
-    def set(self, obj: any, value: SymbolType):
+    def set(self, obj: object, value: SymbolType):
         if not hasattr(obj, self.symbol):
             raise TycheReferencesException(f"The object does not contain the property {self.symbol}. The object is {obj}")
         setattr(obj, self.symbol, value)
@@ -75,8 +75,8 @@ class FunctionSymbolReference(Generic[SymbolType], SymbolReference[SymbolType]):
     """ Represents a reference to a mutable property in an object. """
     def __init__(
             self, symbol: str,
-            fget: Callable[[any], SymbolType],
-            fset: Optional[Callable[[any, SymbolType], None]] = None
+            fget: Callable[[object], SymbolType],
+            fset: Optional[Callable[[object, SymbolType], None]] = None
     ):
         super().__init__(symbol)
         self.symbol = symbol
@@ -86,10 +86,10 @@ class FunctionSymbolReference(Generic[SymbolType], SymbolReference[SymbolType]):
     def is_mutable(self) -> bool:
         return self.fset is not None
 
-    def get(self, obj: any) -> SymbolType:
+    def get(self, obj: object) -> SymbolType:
         return self.fget(obj)
 
-    def set(self, obj: any, value: SymbolType):
+    def set(self, obj: object, value: SymbolType):
         if self.fset is None:
             raise TycheReferencesException(
                 f"This function reference to {self.symbol} is not mutable")
@@ -123,10 +123,10 @@ class GuardedSymbolReference(
     def is_mutable(self) -> bool:
         return self.set_transform is not None and self.ref.is_mutable()
 
-    def get(self, obj: any) -> SymbolType:
+    def get(self, obj: object) -> SymbolType:
         return self.get_transform(self.ref.get(obj))
 
-    def set(self, obj: any, value: SymbolType):
+    def set(self, obj: object, value: SymbolType):
         if self.set_transform is None:
             raise TycheReferencesException(
                 f"This guarded reference to {self.symbol} is not mutable")
