@@ -300,12 +300,11 @@ class DirectLearningStrategy(LearningStrategy):
 
         # Limit the learning by the confidence in the new value of the concept.
         # If likelihood is 50%, then that is useless to tell us the value of the concept.
-        true_confidence = max(0.0, likelihood - 0.5) * 2
-        false_confidence = max(0.0, 0.5 - likelihood) * 2
-        confidence = true_confidence + false_confidence
+        confidence = abs(likelihood - 0.5) * 2
+        learning_rate *= confidence
 
         # Calculate the weighted sum of the current and new probabilities.
-        return learning_rate * true_confidence + curr_prob * (1 - learning_rate * confidence)
+        return likelihood * learning_rate + curr_prob * (1 - learning_rate)
 
     def __str__(self):
         return f"DirectLearningStrategy(learning_rate={self.learning_rate:.2f})"
