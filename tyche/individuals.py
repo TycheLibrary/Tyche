@@ -268,10 +268,7 @@ def role(fn: Optional[Callable[[], TycheRoleValue]] = None, *, symbol: Optional[
 
 
 class LearningStrategy:
-    """ An object that informs an Individual subclass about how to learn a concept. """
-    def __init__(self, name: str):
-        self.name = name
-
+    """ An object that applies changes to individuals to update them based upon observations of concepts. """
     def apply(
             self, individual: TycheContext, concept_ref: ConceptFunctionSymbolReference,
             likelihood: float, learning_rate: float
@@ -288,7 +285,7 @@ class DirectLearningStrategy(LearningStrategy):
     single true observation marking the concept always true.
     """
     def __init__(self, learning_rate: float = 1):
-        super().__init__("direct")
+        super().__init__()
         if learning_rate <= 0:
             raise TycheIndividualsException(
                 f"The learning rate must be greater than 0, not {learning_rate:.3f}")
@@ -336,10 +333,10 @@ class StatisticalLearningStrategy(LearningStrategy):
     observation is made that calls this learning strategy.
     """
     def __init__(self, initial_value_weight: float = 1, *, initial_value: Optional[float] = None):
-        super().__init__("statistical")
+        super().__init__()
         if initial_value_weight < 0:
             raise TycheIndividualsException(
-                f"The initial value weight must be greater than or equal to 0, not {initial_value_bias:.3f}")
+                f"The initial value weight must be greater than or equal to 0, not {initial_value_weight:.3f}")
 
         self.initial_value_weight = initial_value_weight
         self.initial_value: Optional[float] = initial_value
