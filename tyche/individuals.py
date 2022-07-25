@@ -480,82 +480,100 @@ class Individual(TycheContext):
         coerced_ref = GuardedSymbolReference(ref, self.coerce_role_value, self.coerce_role_value)
         return coerced_ref.bake(self)
 
-    def observe(self, observation: Concept, likelihood: float = 1, learning_rate: float = 1):
-        # If an expectation over a role is observed, then we can apply Bayes' rule to the role.
-        if isinstance(observation, Expectation):
-            expectation: Expectation = cast(Expectation, observation)
-            observed_role_ref = expectation.role.eval_reference(self)
-            prev_role_value = observed_role_ref.get()
-            new_role_value = prev_role_value.apply_bayes_rule(expectation.concept, likelihood, learning_rate)
-            observed_role_ref.set(new_role_value)
+    def _observe_expectation(self, expectation: Expectation, likelihood: float, learning_rate: float):
+        """
+        Applies role learning to the role, and propagates the observation.
+        """
+        # Update the role using Bayes' rule.
+        observed_role_ref = expectation.role.eval_reference(self)
+        prev_role_value = observed_role_ref.get()
+        new_role_value = prev_role_value.apply_bayes_rule(expectation.concept, likelihood, learning_rate)
+        observed_role_ref.set(new_role_value)
 
-            # Propagate the observation!
-            possible_matching_individuals = Expectation.reverse_observation(
-                prev_role_value, expectation.concept, expectation.given, likelihood
+        # Propagate the observation!
+        possible_matching_individuals = Expectation.reverse_observation(
+            prev_role_value, expectation.concept, expectation.given, likelihood
+        )
+        concept_given = Given(expectation.concept, expectation.given)
+        for ctx, prob in possible_matching_individuals:
+            if ctx is not None:
+                ctx.observe(concept_given, likelihood, learning_rate * prob)
+
+    def _observe_atom(self, atom: Atom, likelihood: float, learning_rate: float):
+        """
+        If a learning strategy is set for the observed concept, this applies it.
+        """
+        # Could be a constant or a custom Atom subclass.
+        if not self.concepts.contains(atom.symbol):
+            return
+
+        ref = self.concepts.get_reference(atom.symbol)
+        if not isinstance(ref, ConceptFunctionSymbolReference):
+            return
+
+        concept_ref = cast(ConceptFunctionSymbolReference, ref)
+        learning_strat = concept_ref.learning_strat
+        if learning_strat is None:
+            return
+
+        learning_strat.apply(self, concept_ref, likelihood, learning_rate)
+
+    def _observe_sub_concepts(self, observation: Concept, likelihood: float, learning_rate: float):
+        """
+        Propagates the observation to its sub-concepts.
+        e.g. observe (A and B) -> observe A and observe B
+        """
+        observation_prob = self.eval(observation)
+        obs_matches_expected_prob = likelihood * observation_prob + (1 - likelihood) * (1 - observation_prob)
+        if obs_matches_expected_prob <= 0:
+            raise TycheIndividualsException(
+                f"The observation is impossible under this model "
+                f"({observation} with likelihood {likelihood} @ {self.name})"
             )
-            concept_given = Given(expectation.concept, expectation.given)
-            for ctx, prob in possible_matching_individuals:
-                if ctx is not None:
-                    ctx.observe(concept_given, likelihood, learning_rate * prob)
 
-        # If an expectation of a concept is observed, then we may be able to apply a learning strategy.
+        # Loop through all of the sub-concepts of the observation.
+        child_concepts = observation.get_child_concepts_in_eval_context()
+        for index, child_concept in enumerate(child_concepts):
+            if isinstance(child_concept, Constant):
+                continue  # Quick skip
+
+            obs_given_child = observation.copy_with_new_child_concept_from_eval_context(index, ALWAYS)
+            obs_given_not_child = observation.copy_with_new_child_concept_from_eval_context(index, NEVER)
+
+            child_prob = self.eval(child_concept)
+            not_child_prob = 1 - child_prob
+            obs_given_child_prob = self.eval(obs_given_child)
+            obs_given_not_child_prob = self.eval(obs_given_not_child)
+
+            child_true_prob = uncertain_bayes_rule(
+                child_prob, observation_prob, obs_given_child_prob, likelihood)
+            child_false_prob = uncertain_bayes_rule(
+                not_child_prob, observation_prob, obs_given_not_child_prob, likelihood)
+
+            # Corresponds to the learning_rate parameter.
+            child_influence = abs(obs_given_child_prob - obs_given_not_child_prob)
+            if child_influence <= 0:
+                continue
+
+            # Corresponds to the likelihood parameter.
+            if child_true_prob + child_false_prob <= 0:
+                continue
+            child_likelihood = child_true_prob / (child_true_prob + child_false_prob)
+
+            # Propagate!
+            self.observe(child_concept, child_likelihood, learning_rate * child_influence)
+
+    def observe(self, observation: Concept, likelihood: float = 1, learning_rate: float = 1):
+        """
+        Learns the roles and concepts within this individual based upon the observation,
+        and propagate the observation to its sub-concepts.
+        """
+        if isinstance(observation, Expectation):
+            self._observe_expectation(cast(Expectation, observation), likelihood, learning_rate)
         elif isinstance(observation, Atom):
-            symbol = cast(Atom, observation).symbol
-            # Could be a constant or a custom Atom subclass.
-            if not self.concepts.contains(symbol):
-                return
-
-            ref = self.concepts.get_reference(symbol)
-            if not isinstance(ref, ConceptFunctionSymbolReference):
-                return
-
-            concept_ref = cast(ConceptFunctionSymbolReference, ref)
-            learning_strat = concept_ref.learning_strat
-            if learning_strat is None:
-                return
-
-            learning_strat.apply(self, concept_ref, likelihood, learning_rate)
-
+            self._observe_atom(cast(Atom, observation), likelihood, learning_rate)
         else:
-            # Otherwise, we can recurse through the observation.
-            observation_prob = self.eval(observation)
-            obs_matches_expected_prob = likelihood * observation_prob + (1 - likelihood) * (1 - observation_prob)
-            if obs_matches_expected_prob <= 0:
-                raise TycheIndividualsException(
-                    f"The observation is impossible under this model "
-                    f"({observation} with likelihood {likelihood} @ {self.name})"
-                )
-
-            child_concepts = observation.get_child_concepts_in_eval_context()
-            for index, child_concept in enumerate(child_concepts):
-                if isinstance(child_concept, Constant):
-                    continue  # Quick skip
-
-                obs_given_child = observation.copy_with_new_child_concept_from_eval_context(index, ALWAYS)
-                obs_given_not_child = observation.copy_with_new_child_concept_from_eval_context(index, NEVER)
-
-                child_prob = self.eval(child_concept)
-                not_child_prob = 1 - child_prob
-                obs_given_child_prob = self.eval(obs_given_child)
-                obs_given_not_child_prob = self.eval(obs_given_not_child)
-
-                child_true_prob = uncertain_bayes_rule(
-                    child_prob, observation_prob, obs_given_child_prob, likelihood)
-                child_false_prob = uncertain_bayes_rule(
-                    not_child_prob, observation_prob, obs_given_not_child_prob, likelihood)
-
-                # Corresponds to the learning_rate parameter.
-                child_influence = abs(obs_given_child_prob - obs_given_not_child_prob)
-                if child_influence <= 0:
-                    continue
-
-                # Corresponds to the likelihood parameter.
-                if child_true_prob + child_false_prob <= 0:
-                    continue
-                child_likelihood = child_true_prob / (child_true_prob + child_false_prob)
-
-                # Propagate!
-                self.observe(child_concept, child_likelihood, learning_rate * child_influence)
+            self._observe_sub_concepts(observation, likelihood, learning_rate)
 
     def to_str(self, *, detail_lvl: int = 1, indent_lvl: int = 0):
         if detail_lvl <= 0:
