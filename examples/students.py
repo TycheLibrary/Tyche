@@ -24,7 +24,7 @@ class Person(Individual):
     def adult(self) -> float:
         return self.age >= 18
 
-    @concept(symbol="tall", learning_strat=DirectLearningStrategy(learning_rate=0.8))
+    @concept(symbol="tall", learning_strat=StatisticalLearningStrategy(initial_value_weight=1))
     def is_tall(self) -> float:
         return self.height_cm > self.tall_cutoff
 

@@ -318,10 +318,63 @@ class DirectLearningStrategy(LearningStrategy):
         concept_ref.set(individual, new_value)
 
     def __str__(self):
-        return f"DirectLearningStrategy(learning_rate={self.learning_rate:.2f})"
+        return f"{type(self).__name__}(learning_rate={self.learning_rate:.2f})"
 
     def __repr__(self):
-        return f"DirectLearningStrategy(learning_rate={self.learning_rate})"
+        return f"{type(self).__name__}(learning_rate={self.learning_rate})"
+
+
+class StatisticalLearningStrategy(LearningStrategy):
+    """
+    This learning strategy accumulates a running mean of observations
+    about a concept, and uses it to learn the value of the concept.
+    An initial value bias can be used to favour the initial value of
+    the concept until enough observations have been made.
+
+    If an initial value is not supplied on construction, then the initial
+    value is considered to be the value of the concept when the first
+    observation is made that calls this learning strategy.
+    """
+    def __init__(self, initial_value_weight: float = 1, *, initial_value: Optional[float] = None):
+        super().__init__("statistical")
+        if initial_value_weight < 0:
+            raise TycheIndividualsException(
+                f"The initial value weight must be greater than or equal to 0, not {initial_value_bias:.3f}")
+
+        self.initial_value_weight = initial_value_weight
+        self.initial_value: Optional[float] = initial_value
+
+        if initial_value is None:
+            self.running_learning_rate_sum: float = 0.0
+            self.running_likelihood_sum: float = 0.0
+        else:
+            self.running_learning_rate_sum: float = initial_value_weight
+            self.running_likelihood_sum: float = initial_value_weight * initial_value
+
+    def apply(
+            self, individual: TycheContext, concept_ref: ConceptFunctionSymbolReference,
+            likelihood: float, learning_rate: float
+    ):
+        # If we were not given an initial value on construction, read it now.
+        if self.initial_value is None:
+            self.initial_value = concept_ref.get(individual)
+            self.running_learning_rate_sum: float = self.initial_value_weight
+            self.running_likelihood_sum: float = self.initial_value_weight * self.initial_value
+
+        # Update the running totals.
+        self.running_likelihood_sum += likelihood * learning_rate
+        self.running_learning_rate_sum += learning_rate
+        if self.running_learning_rate_sum <= 0:
+            return
+
+        # Calculate the running mean observed value of the concept.
+        concept_ref.set(individual, self.running_likelihood_sum / self.running_learning_rate_sum)
+
+    def __str__(self):
+        return f"{type(self).__name__}(initial_value_weight={self.initial_value_weight:.2f})"
+
+    def __repr__(self):
+        return f"{type(self).__name__}(initial_value_weight={self.initial_value_weight})"
 
 
 class Individual(TycheContext):
