@@ -272,13 +272,20 @@ class LearningStrategy:
     def __init__(self, name: str):
         self.name = name
 
+    def apply(
+            self, individual: TycheContext, concept_ref: ConceptFunctionSymbolReference,
+            likelihood: float, learning_rate: float
+    ):
+        """ Modifies the individual to learn the given concept from the given observation of it. """
+        raise NotImplementedError(f"{type(self).__name__} does not implement apply")
+
 
 class DirectLearningStrategy(LearningStrategy):
     """
     The most basic learning strategy that simply updates concepts
     to the values they were observed as. A learning rate can be
     used to limit the changes to the concept's value, to stop a
-    single true observation marking the concept as always true.
+    single true observation marking the concept always true.
     """
     def __init__(self, learning_rate: float = 1):
         super().__init__("direct")
@@ -291,10 +298,10 @@ class DirectLearningStrategy(LearningStrategy):
 
         self.learning_rate = learning_rate
 
-    def apply(self, curr_prob: float, likelihood: float, learning_rate: float) -> float:
-        """
-        Calculates the new value that should be used for the concept that was observed.
-        """
+    def apply(
+            self, individual: TycheContext, concept_ref: ConceptFunctionSymbolReference,
+            likelihood: float, learning_rate: float
+    ):
         # Limit the learning by the learning rate applied for the strategy.
         learning_rate *= self.learning_rate
 
@@ -304,7 +311,11 @@ class DirectLearningStrategy(LearningStrategy):
         learning_rate *= confidence
 
         # Calculate the weighted sum of the current and new probabilities.
-        return likelihood * learning_rate + curr_prob * (1 - learning_rate)
+        curr_prob = concept_ref.get(individual)
+        new_value = likelihood * learning_rate + curr_prob * (1 - learning_rate)
+
+        # Update the individual!
+        concept_ref.set(individual, new_value)
 
     def __str__(self):
         return f"DirectLearningStrategy(learning_rate={self.learning_rate:.2f})"
@@ -453,14 +464,7 @@ class Individual(TycheContext):
             if learning_strat is None:
                 return
 
-            if isinstance(learning_strat, DirectLearningStrategy):
-                curr_prob = ref.get(self)
-                new_value = cast(DirectLearningStrategy, learning_strat).apply(
-                    curr_prob, likelihood, learning_rate
-                )
-                ref.set(self, new_value)
-            else:
-                raise TycheIndividualsException(f"Unknown learning strategy type {type(learning_strat).__name__}")
+            learning_strat.apply(self, concept_ref, likelihood, learning_rate)
 
         else:
             # Otherwise, we can recurse through the observation.
