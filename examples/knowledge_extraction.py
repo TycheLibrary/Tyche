@@ -109,8 +109,24 @@ if __name__ == "__main__":
     no_observations = 1000
 
     # We generate 'conversations' of a small number of messages.
-    min_messages = 1
-    max_messages = 3
+    min_messages = 2
+    max_messages = 4
+    uses_emoji = Atom("uses_emoji")
+    capitalises_first_word = Atom("capitalises_first_word")
+    is_positive = Atom("is_positive")
+
+    def generate_conversation_observation(person: Person, message_count: int) -> Concept:
+        # Sample the properties of random messages.
+        messages = []
+        for message_no in range(message_count):
+            m_uses_emoji, m_capitalises, m_is_positive = person.sample_message()
+            o_uses_emoji = uses_emoji if m_uses_emoji else uses_emoji.complement()
+            o_capitalises = capitalises_first_word if m_capitalises else capitalises_first_word.complement()
+            o_is_positive = is_positive if m_is_positive else is_positive.complement()
+            messages.append(o_uses_emoji & o_capitalises & o_is_positive)
+
+        # Combine the messages into one observation.
+        return functools.reduce(lambda a, b: a & b, messages)
 
     print(f"Running with {no_trials} trials, {no_observations} observations")
     trial_results = []
@@ -122,9 +138,6 @@ if __name__ == "__main__":
         learned_people_by_name: dict[str, Person] = {person.name: person for person in learned_people}
 
         # Generate random indirect observations about Bob, Alice, and Jeff.
-        uses_emoji = Atom("uses_emoji")
-        capitalises_first_word = Atom("capitalises_first_word")
-        is_positive = Atom("is_positive")
         for _ in range(no_observations):
             # The context person is the person that we observed having a conversation with someone.
             target_ctx = target_people[random.randint(0, len(target_people) - 1)]
@@ -132,17 +145,8 @@ if __name__ == "__main__":
 
             # Sample the messages of the conversation.
             partner = cast(Person, target_ctx.conversed_with.sample())
-            messages = []
-            for message_no in range(random.randint(min_messages, max_messages)):
-                m_uses_emoji, m_capitalises, m_is_positive = partner.sample_message()
-                o_uses_emoji = uses_emoji if m_uses_emoji else uses_emoji.complement()
-                o_capitalises = capitalises_first_word if m_capitalises else capitalises_first_word.complement()
-                o_is_positive = is_positive if m_is_positive else is_positive.complement()
-                messages.append(o_uses_emoji & o_capitalises & o_is_positive)
-
-            # Construct the observation.
-            obs_messages = functools.reduce(lambda a, b: a & b, messages)
-            observation = Expectation("conversed_with", obs_messages)
+            conversation = generate_conversation_observation(partner, random.randint(min_messages, max_messages))
+            observation = Expectation("conversed_with", conversation)
             if len(example_observations) < 10:
                 example_observations.append(f"Observe at {target_ctx.name}: {str(observation)}")
 
@@ -164,15 +168,41 @@ if __name__ == "__main__":
     print("Learned People:")
     for target in target_people:
         learned = [people[target.name] for people in trial_results]
-        uses_emoji = [p.uses_emoji for p in learned]
-        capitalises_first_word = [p.capitalises_first_word for p in learned]
-        is_positive = [p.is_positive for p in learned]
+        learned_uses_emoji = [p.uses_emoji for p in learned]
+        learned_capitalises = [p.capitalises_first_word for p in learned]
+        learned_is_positive = [p.is_positive for p in learned]
         print(f"- {target.name}("
-              f"capitalises_first_word={np.mean(capitalises_first_word):.3f} ± {np.std(capitalises_first_word):.3f}, "
-              f"is_positive={np.mean(is_positive):.3f} ± {np.std(is_positive):.3f}, "
-              f"uses_emoji={np.mean(uses_emoji):.3f} ± {np.std(uses_emoji):.3f})")
+              f"capitalises_first_word={np.mean(learned_capitalises):.3f} ± {np.std(learned_capitalises):.3f}, "
+              f"is_positive={np.mean(learned_is_positive):.3f} ± {np.std(learned_is_positive):.3f}, "
+              f"uses_emoji={np.mean(learned_uses_emoji):.3f} ± {np.std(learned_uses_emoji):.3f})")
     print()
 
     print("Initial People that were Trained into the Learned People:")
     print("- " + "\n- ".join(str(p) for p in create_initial_learn_model()))
     print()
+
+    print("Evaluating the accuracy of the target model to predict the author of sets of messages")
+    no_tests = 2000
+    for no_messages in range(1, 11):
+        correct_per_person = {p.name: 0 for p in target_people}
+        for person in target_people:
+            for test in range(no_tests):
+                # Generate a random conversation from the current person.
+                conversation = generate_conversation_observation(person, no_messages)
+
+                # Calculate who the model would predict to have written the conversation.
+                highest_prob = -1
+                highest_prob_person = None
+                for potential_person in target_people:
+                    prob = potential_person.eval(conversation)
+                    if prob > highest_prob:
+                        highest_prob = prob
+                        highest_prob_person = potential_person
+
+                # Check if the prediction was correct.
+                if highest_prob_person.name == person.name:
+                    correct_per_person[person.name] += 1
+
+        print(f".. {no_messages} message{'s' if no_messages > 1 else ''}: ".ljust(16) + ", ".join(
+            [f"{name} = {100 * correct / no_tests:.1f}%" for name, correct in correct_per_person.items()]
+        ))
