@@ -10,6 +10,7 @@ mechanisms of the individuals module of Tyche.
 """
 from tyche.individuals import *
 from tyche.language import *
+import functools
 
 
 # We want to decay earlier observations faster than later observations.
@@ -66,12 +67,12 @@ class Person(Individual):
     def is_positive(self, is_positive: float):
         self._is_positive = is_positive
 
-    def sample(self) -> 'Person':
+    def sample_message(self) -> tuple[bool, bool, bool]:
         """ Randomly samples this individual to a Person with known properties. """
         uses_emoji = random.uniform(0, 1) < self._uses_emoji
         capitalises_first_word = random.uniform(0, 1) < self._capitalises_first_word
         is_positive = random.uniform(0, 1) < self._is_positive
-        return Person(self.name, uses_emoji, capitalises_first_word, is_positive)
+        return uses_emoji, capitalises_first_word, is_positive
 
 
 if __name__ == "__main__":
@@ -105,7 +106,11 @@ if __name__ == "__main__":
     # The parameters for our evaluation of the knowledge extraction.
     # We run multiple trials to obtain mean & std dev.
     no_trials = 10
-    no_observations = 1_000
+    no_observations = 1000
+
+    # We generate 'conversations' of a small number of messages.
+    min_messages = 1
+    max_messages = 3
 
     print(f"Running with {no_trials} trials, {no_observations} observations")
     trial_results = []
@@ -123,21 +128,23 @@ if __name__ == "__main__":
         for _ in range(no_observations):
             # The context person is the person that we observed having a conversation with someone.
             target_ctx = target_people[random.randint(0, len(target_people) - 1)]
-            sampled_ctx = target_ctx.sample()
             learned_ctx = learned_people_by_name[target_ctx.name]
 
-            # Sample who they had a conversation with.
-            target_about = cast(Person, target_ctx.conversed_with.sample())
-            sampled_about = target_about.sample()
+            # Sample the messages of the conversation.
+            partner = cast(Person, target_ctx.conversed_with.sample())
+            messages = []
+            for message_no in range(random.randint(min_messages, max_messages)):
+                m_uses_emoji, m_capitalises, m_is_positive = partner.sample_message()
+                o_uses_emoji = uses_emoji if m_uses_emoji else uses_emoji.complement()
+                o_capitalises = capitalises_first_word if m_capitalises else capitalises_first_word.complement()
+                o_is_positive = is_positive if m_is_positive else is_positive.complement()
+                messages.append(o_uses_emoji & o_capitalises & o_is_positive)
 
             # Construct the observation.
-            about_uses_emoji = uses_emoji if sampled_about.uses_emoji > 0.5 else uses_emoji.complement()
-            about_capitalises_first_word = capitalises_first_word if sampled_about.capitalises_first_word > 0.5 else capitalises_first_word.complement()
-            about_is_positive = is_positive if sampled_about.is_positive > 0.5 else is_positive.complement()
-            about_desc = about_uses_emoji & about_capitalises_first_word & about_is_positive
-            observation = Expectation("conversed_with", about_desc)
-            if len(example_observations) < 5:
-                example_observations.append(observation)
+            obs_messages = functools.reduce(lambda a, b: a & b, messages)
+            observation = Expectation("conversed_with", obs_messages)
+            if len(example_observations) < 10:
+                example_observations.append(f"Observe at {target_ctx.name}: {str(observation)}")
 
             # Apply the observation to the learned ctx person.
             learned_ctx.observe(observation)

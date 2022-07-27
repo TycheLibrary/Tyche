@@ -388,7 +388,12 @@ class StatisticalLearningStrategy(LearningStrategy):
         This is required so that the state of each reference that uses an instance
         of this learning strategy is kept separate.
         """
-        return type(self)(self.initial_value_weight, decay_rate=self.decay_rate, initial_value=self.initial_value)
+        return type(self)(
+            self.initial_value_weight,
+            decay_rate=self.decay_rate,
+            decay_rate_for_decay_rate=self.decay_rate_for_decay_rate,
+            initial_value=self.initial_value
+        )
 
     def apply(self, individual: TycheContext, concept_ref: ConceptFunctionSymbolReference,
               likelihood: float, learning_rate: float):
