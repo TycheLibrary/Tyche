@@ -109,6 +109,7 @@ if __name__ == "__main__":
 
     print(f"Running with {no_trials} trials, {no_observations} observations")
     trial_results = []
+    example_observations = []
     for trial_no in range(no_trials):
         print(f".. running trial {trial_no + 1}")
 
@@ -135,6 +136,8 @@ if __name__ == "__main__":
             about_is_positive = is_positive if sampled_about.is_positive > 0.5 else is_positive.complement()
             about_desc = about_uses_emoji & about_capitalises_first_word & about_is_positive
             observation = Expectation("conversed_with", about_desc)
+            if len(example_observations) < 5:
+                example_observations.append(observation)
 
             # Apply the observation to the learned ctx person.
             learned_ctx.observe(observation)
@@ -142,6 +145,10 @@ if __name__ == "__main__":
         trial_results.append(learned_people_by_name)
 
     print()
+    print("Example Observations:")
+    print("- " + "\n- ".join(str(obs) for obs in example_observations))
+    print()
+
     print("Target People:")
     print("- " + "\n- ".join(str(p) for p in target_people))
     print()
@@ -161,6 +168,4 @@ if __name__ == "__main__":
 
     print("Initial People that were Trained into the Learned People:")
     print("- " + "\n- ".join(str(p) for p in create_initial_learn_model()))
-    print()
-
     print()
