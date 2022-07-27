@@ -4,6 +4,7 @@ description logic (ADL) formulas.
 
 ADL is designed to support both mathematical notion and a formal english notion.
 """
+import random
 from typing import Final, cast, Optional, Union, Tuple, NewType, Callable
 
 from tyche.probability import uncertain_bayes_rule
@@ -216,6 +217,17 @@ class ExclusiveRoleDist:
 
         for context, weight in self._entries:
             yield context, weight / total_weight
+
+    def sample(self) -> Optional['TycheContext']:
+        """ Selects a random individual from this role based upon their weights. """
+        target_cumulative_weight = random.uniform(0, self.total_weight)
+        cumulative_weight = 0
+        for context, weight in self._entries:
+            cumulative_weight += weight
+            if cumulative_weight >= target_cumulative_weight:
+                return context
+
+        return None
 
     def __str__(self):
         return self.to_str()
