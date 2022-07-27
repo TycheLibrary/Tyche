@@ -128,7 +128,8 @@ if __name__ == "__main__":
         # Combine the messages into one observation.
         return functools.reduce(lambda a, b: a & b, messages)
 
-    print(f"Running with {no_trials} trials, {no_observations} observations")
+    print(f"Running with {no_trials} trials, {no_observations} observations, "
+          f"and conversations of {min_messages} to {max_messages} messages")
     trial_results = []
     example_observations = []
     for trial_no in range(no_trials):
