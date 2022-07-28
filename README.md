@@ -1,4 +1,8 @@
-# Tyche
+<p align="center">
+  <img src="https://raw.githubusercontent.com/TycheLibrary/Tyche/master/docs/logo.png" alt="Tyche Logo" />
+</p>
+
+--------------------------------------------------------------------
 
 Tyche is a Python library to represent and reason about aleatoric information. 
 The system includes syntax for describing aleatoric information (in `tyche.language`),

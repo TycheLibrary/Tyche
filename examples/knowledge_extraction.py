@@ -76,17 +76,17 @@ class Person(Individual):
 
 
 if __name__ == "__main__":
-    # Construct a target model. This is the ground truth that we will use to randomly
+    # Construct the ground-truth model. This is the model that we will use to randomly
     # generate observations to evaluate how well we can estimate the model from them.
     target_bob = Person("Bob", uses_emoji=0.9, capitalises_first_word=0.4, is_positive=0.15)
     target_alice = Person("Alice", uses_emoji=0.1, capitalises_first_word=0.8, is_positive=0.4)
     target_jeff = Person("Jeff", uses_emoji=0.5, capitalises_first_word=0.5, is_positive=0.5)
-    target_bob.conversed_with.add(target_alice)#, 1/3)
-    target_bob.conversed_with.add(target_jeff)#, 2/3)
-    target_alice.conversed_with.add(target_bob)#, 2/9)
-    target_alice.conversed_with.add(target_jeff)#, 7/9)
-    target_jeff.conversed_with.add(target_alice)#, 2/10)
-    target_jeff.conversed_with.add(target_bob)#, 8/10)
+    target_bob.conversed_with.add(target_alice)
+    target_bob.conversed_with.add(target_jeff)
+    target_alice.conversed_with.add(target_bob)
+    target_alice.conversed_with.add(target_jeff)
+    target_jeff.conversed_with.add(target_alice)
+    target_jeff.conversed_with.add(target_bob)
 
     target_people = [target_bob, target_alice, target_jeff]
 
@@ -182,7 +182,7 @@ if __name__ == "__main__":
     print("- " + "\n- ".join(str(p) for p in create_initial_learn_model()))
     print()
 
-    print("Evaluating the accuracy of the target model to predict the author of sets of messages")
+    print("Evaluating the accuracy of the target model to predict the author of random sets of messages")
     no_tests = 2000
     for no_messages in range(1, 11):
         correct_per_person = {p.name: 0 for p in target_people}
