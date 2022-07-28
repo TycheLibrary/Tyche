@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/TycheLibrary/Tyche/master/docs/logo.png" alt="Tyche Logo" />
+  <img src="https://raw.githubusercontent.com/TycheLibrary/Tyche/master/docs/banner.png" alt="Tyche Logo" height="500" />
 </p>
 
 --------------------------------------------------------------------
