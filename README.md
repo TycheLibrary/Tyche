@@ -3,15 +3,15 @@
 </p>
 
 Tyche is a Python library to support the representation of, and the reasoning about, aleatoric information.
-Aleatoric information is information that can be modelled by a roll of the dice. It is information
-that has a probability of truth for each time it is sampled. For example, every text message that
-people send _may_ include emojis, with a different probability for each individual that sent the message.
-Tyche provides functionality to reason about this aleatoric information using aleatoric description logic.
-This allows the probability of truth of logical statements to be efficiently queried, and allows the
-probability of the tendencies of individuals to be learnt through observation.
+Aleatoric information is information that has an independent probability of being true each time it is observed
+(i.e., each observation is a roll of the dice). For example, every text message that people send _may_ include
+emojis, with a different probability for each individual that sent the message. Tyche provides functionality to
+reason about this aleatoric information using aleatoric description logic. This allows the probability of truth
+of logical statements to be efficiently queried, and allows the probability of the tendencies of individuals to
+be learnt through observation.
 
 Tyche provides its main functionality through its `tyche.individuals` module, which facilitates the
-construction of ontological knowledge basea with probabilistic beliefs. This allows the simple
+construction of ontological knowledge bases with probabilistic beliefs. This allows the simple
 representation of individuals, the probabilistic beliefs about them (termed concepts), and the
 probabilistic relationships between them (termed roles). Aleatoric description logic sentences
 may then be constructed using the `tyche.language` model to be used to query a knowledge base
@@ -19,8 +19,31 @@ for a probability, or to be used as an observation to update a knowledge base. T
 fine-grained modelling of probabilistic belief systems, with a rigorous mathematical foundation.
 
 **Related Publications:**
-- Aleatoric Description Logic for Probabilistic Reasoning: [arXiv link](https://arxiv.org/abs/2108.13036)
-- A modal aleatoric calculus for probabilistic reasoning: [arXiv link](https://arxiv.org/abs/1812.11741)
+- "Aleatoric Description Logic for Probabilistic Reasoning" by
+  Tim French and Thomas Smoker (2021): [arXiv link](https://arxiv.org/abs/2108.13036)
+- "A modal aleatoric calculus for probabilistic reasoning" by
+  Tim French, Andrew Gozzard and Mark Reynolds (2018): [arXiv link](https://arxiv.org/abs/1812.11741)
+
+
+## Usage
+
+Tyche may be installed via pip from [PyPi](https://pypi.org/project/Tyche/).
+```sh
+pip install Tyche
+```
+
+The functions and classes of Tyche can then be imported from the tyche package.
+```python
+from tyche.language import *
+from tyche.individuals import *
+from tyche.distributions import *
+```
+
+Tyche does not yet have tutorials or documentation for its usage. However, example uses of Tyche are
+provided in the [examples directory](https://github.com/TycheLibrary/Tyche/tree/main/examples), and
+the [source code](https://github.com/TycheLibrary/Tyche/tree/main/tyche) contains doc comments to
+explain the functionality of classes and methods. In the future, more extensive documentation of
+Tyche is planned.
 
 
 ## Structure
