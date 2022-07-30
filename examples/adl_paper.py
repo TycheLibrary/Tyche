@@ -3,7 +3,7 @@ This file contains examples from the paper "Aleatoric Description Logic
 for Probabilistic Reasoning" by Tim French and Thomas Smoker.
 """
 from tyche.individuals import Individual, TycheConceptField, IdentityIndividual, TycheRoleField
-from tyche.language import Concept, ADLNode, ExclusiveRoleDist, Expectation, Exists, TycheLanguageException
+from tyche.language import Concept, ADLNode, ExclusiveRoleDist, Expectation
 from tyche.probability import TycheProbabilityException
 
 

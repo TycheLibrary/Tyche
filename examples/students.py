@@ -3,8 +3,6 @@ Example python class for prototyping usage of the package
 This example is for tracking student performance (grades)
 and likely project supervisor.
 """
-import sys
-
 from tyche.individuals import *
 from tyche.distributions import *
 from tyche.language import *

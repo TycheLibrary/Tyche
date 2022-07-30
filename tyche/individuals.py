@@ -21,10 +21,6 @@ TycheConceptField = TypeVar("TycheConceptField", float, int, bool)
 TycheRoleField = TypeVar("TycheRoleField", bound=ExclusiveRoleDist)
 
 
-# TODO: If you provide a learning_strat for a concept, but
-#       don't provide a setter, we NEED it to error.
-
-
 class TycheIndividualsException(Exception):
     """
     Class for detailing exceptions with individuals.
@@ -140,7 +136,7 @@ class IndividualPropertyDecorator(Generic[AccessedValueType]):
                  symbol: Optional[str] = None):
 
         self.custom_symbol = symbol
-        self.symbol = symbol if symbol is not None else "This symbol"
+        self.symbol = symbol if symbol is not None else "this symbol"
         self.fget: Callable[['Individual'], AccessedValueType] = fget
         self.fset: Optional[Callable[['Individual', AccessedValueType], None]] = None
         self.fdel: Optional[Callable[['Individual'], None]] = None
@@ -227,6 +223,10 @@ class TycheConceptDecorator(IndividualPropertyDecorator[TycheConceptValue]):
         self.learning_strat = learning_strat
 
     def _create_symbol_reference(self) -> 'FunctionSymbolReference':
+        if self.learning_strat is not None and self.fset is None:
+            raise TycheIndividualsException(
+                f"A learning strategy is supplied for {self.symbol}, but a setter has not been provided for it")
+
         return ConceptFunctionSymbolReference(
             self.symbol, self.fget, self.fset, learning_strat=self.learning_strat
         )
