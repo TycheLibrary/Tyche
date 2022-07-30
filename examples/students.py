@@ -108,8 +108,8 @@ if __name__ == "__main__":
     #     Conditional(condition=adult, if_yes=Concept('X'), if_no=No) where X is a new String
 
     supervisor_WWCC = Exists("supervisor") & Expectation("supervisor", "wwcc")
-    tall_and_adult = Atom("adult") & Atom("tall")
-    tall_or_adult = Atom("adult") | Atom("tall")
+    tall_and_adult = Concept("adult") & Concept("tall")
+    tall_or_adult = Concept("adult") | Concept("tall")
     supervisor_tall_adult = Exists("supervisor") & Expectation("supervisor", tall_and_adult)
     supervisor = Role('supervisor')  # supervisor is a role object wih functions is, is_not, is_given
 

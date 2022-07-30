@@ -111,9 +111,9 @@ if __name__ == "__main__":
     # We generate 'conversations' of a small number of messages.
     min_messages = 2
     max_messages = 4
-    uses_emoji = Atom("uses_emoji")
-    capitalises_first_word = Atom("capitalises_first_word")
-    is_positive = Atom("is_positive")
+    uses_emoji = Concept("uses_emoji")
+    capitalises_first_word = Concept("capitalises_first_word")
+    is_positive = Concept("is_positive")
 
     def generate_conversation_observation(person: Person, message_count: int) -> ADLNode:
         # Sample the properties of random messages.

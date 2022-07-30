@@ -5,7 +5,7 @@ from typing import TypeVar, Callable, get_type_hints, Final, Type, cast, Generic
 
 import numpy as np
 
-from tyche.language import ExclusiveRoleDist, TycheLanguageException, TycheContext, Atom, ADLNode, Expectation, \
+from tyche.language import ExclusiveRoleDist, TycheLanguageException, TycheContext, Concept, ADLNode, Expectation, \
     Role, RoleDistributionEntries, ALWAYS, CompatibleWithADLNode, CompatibleWithRole, NEVER, Constant, Given
 
 # Marks instance variables of classes as probabilities that
@@ -120,7 +120,7 @@ class TycheAccessorStore(Generic[AccessedValueType]):
             symbol_type_name = accessor_type.__name__.capitalize()
             context = "type {}".format(obj_type.__name__)
             for name in name_set:
-                Atom.check_symbol(name, symbol_name=symbol_name, symbol_type_name=symbol_type_name, context=context)
+                Concept.check_symbol(name, symbol_name=symbol_name, symbol_type_name=symbol_type_name, context=context)
 
         # Store the accessors in the type object.
         var_references = {symbol: PropertySymbolReference(symbol) for symbol in variables}
@@ -180,7 +180,7 @@ class IndividualPropertyDecorator(Generic[AccessedValueType]):
         self.fdel = fdel
         return self
 
-    def _create_symbol_reference(self) -> 'FunctionSymbolReference'[AccessedValueType]:
+    def _create_symbol_reference(self) -> 'FunctionSymbolReference':
         return FunctionSymbolReference(
             self.symbol,
             cast(Callable[[object], AccessedValueType], self.fget),
@@ -569,7 +569,7 @@ class Individual(TycheContext):
             if ctx is not None:
                 ctx.observe(concept_given, likelihood, learning_rate * prob)
 
-    def _observe_atom(self, atom: Atom, likelihood: float, learning_rate: float):
+    def _observe_atom(self, atom: Concept, likelihood: float, learning_rate: float):
         """
         If a learning strategy is set for the observed concept, this applies it.
         """
@@ -622,8 +622,8 @@ class Individual(TycheContext):
         """
         if isinstance(observation, Expectation):
             self._observe_expectation(cast(Expectation, observation), likelihood, learning_rate)
-        elif isinstance(observation, Atom):
-            self._observe_atom(cast(Atom, observation), likelihood, learning_rate)
+        elif isinstance(observation, Concept):
+            self._observe_atom(cast(Concept, observation), likelihood, learning_rate)
         elif isinstance(observation, Given):
             self.observe(cast(Given, observation).node, likelihood, learning_rate)
         else:

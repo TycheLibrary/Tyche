@@ -371,7 +371,7 @@ class ADLNode:
         if isinstance(node, ADLNode):
             return node
         elif isinstance(node, str):
-            return Atom(node)
+            return Concept(node)
         else:
             raise TycheLanguageException("Incompatible node type {}".format(type(node).__name__))
 
@@ -507,9 +507,9 @@ class Atom(ADLNode):
     """
     Represents indivisible nodes such as concepts and constants such as always or never.
     """
-    def __init__(self, symbol: str, *, special_symbol: bool = False, symbol_type_name: str = "Atom"):
+    def __init__(self, symbol: str, *, special_symbol: bool = False):
         if not special_symbol:
-            Atom.check_symbol(symbol, symbol_type_name=type(self).__name__)
+            Concept.check_symbol(symbol, symbol_type_name=type(self).__name__)
 
         self.symbol = symbol
 
@@ -517,7 +517,7 @@ class Atom(ADLNode):
         return []
 
     def copy_with_new_child_node_from_eval_context(self, index: int, node: ADLNode):
-        raise IndexError("Atom's have no child nodes")
+        raise IndexError(f"{type(self).__name__}s have no child nodes")
 
     @staticmethod
     def check_symbol(symbol: str, *, symbol_name="symbol", symbol_type_name: str = "Atom", context: str = None):
@@ -558,13 +558,6 @@ class Atom(ADLNode):
     def __lt__(self, other) -> bool:
         raise TycheLanguageException("not yet implemented")
 
-    def direct_eval(self, context: TycheContext) -> float:
-        return context.get_concept(self.symbol)
-
-    def eval_reference(self, context: TycheContext) -> BakedSymbolReference[float]:
-        """ Evaluates to a mutable reference to the value of this atom. """
-        return context.get_concept_reference(self.symbol)
-
     def normal_form(self):
         return self
 
@@ -575,13 +568,44 @@ class Atom(ADLNode):
         raise NotImplementedError("is_weaker is unimplemented for " + type(self).__name__)
 
 
+class Concept(Atom):
+    """
+    Represents indivisible nodes such as concepts and constants such as always or never.
+    """
+    def __init__(self, symbol: str):
+        super().__init__(symbol, special_symbol=False)
+
+    def direct_eval(self, context: TycheContext) -> float:
+        return context.get_concept(self.symbol)
+
+    def eval_reference(self, context: TycheContext) -> BakedSymbolReference[float]:
+        """ Evaluates to a mutable reference to the value of this concept. """
+        return context.get_concept_reference(self.symbol)
+
+
+class Constant(Atom):
+    """
+    A constant named aleatoric probability.
+    """
+    def __init__(self, symbol: str, probability: float):
+        super().__init__(symbol, special_symbol=True)
+        self.probability = probability
+
+    def direct_eval(self, context: TycheContext) -> float:
+        return self.probability
+
+
+ALWAYS: Final[Constant] = Constant("\u22A4", 1)
+NEVER: Final[Constant] = Constant("\u22A5", 0)
+
+
 class Role:
     """
     Represents the relationships between contexts.
     """
     def __init__(self, symbol: str, *, special_symbol: bool = False):
         if not special_symbol:
-            Atom.check_symbol(symbol, symbol_type_name=type(self).__name__)
+            Concept.check_symbol(symbol, symbol_type_name=type(self).__name__)
 
         self.symbol = symbol
 
@@ -609,22 +633,6 @@ class Role:
     def eval_reference(self, context: TycheContext) -> BakedSymbolReference[ExclusiveRoleDist]:
         """ Evaluates to a mutable reference to the value of this role. """
         return context.get_role_reference(self.symbol)
-
-
-class Constant(Atom):
-    """
-    A constant named aleatoric probability.
-    """
-    def __init__(self, symbol: str, probability: float):
-        super().__init__(symbol, special_symbol=True)
-        self.probability = probability
-
-    def direct_eval(self, context: TycheContext) -> float:
-        return self.probability
-
-
-ALWAYS: Final[Constant] = Constant("\u22A4", 1)
-NEVER: Final[Constant] = Constant("\u22A5", 0)
 
 
 class Conditional(ADLNode):

@@ -12,7 +12,7 @@ class TestSubIndividual(Individual):
         self._y = y
         self.z = z
 
-    @concept
+    @concept()
     def y(self) -> float:
         return self._y
 
@@ -42,9 +42,9 @@ class TestIndividual(Individual):
 
 class TestIndividuals(unittest.TestCase):
     def setUp(self):
-        self.x = Atom('my_X')
-        self.y = Atom('my_Y')
-        self.z = Atom('my_Z')
+        self.x = Concept('my_X')
+        self.y = Concept('my_Y')
+        self.z = Concept('my_Z')
         self.r = 'my_R'
 
     def tearDown(self):
@@ -161,9 +161,9 @@ class TestIndividuals(unittest.TestCase):
         # Create an individual to test with.
         individual = TestIndividual(0.5)
 
-        x = Atom("x")
-        y = Atom("y")
-        z = Atom("z")
+        x = Concept("x")
+        y = Concept("y")
+        z = Concept("z")
         sub = Role("sub")
 
         # Test evaluating some concepts for the individual.

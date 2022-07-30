@@ -4,9 +4,9 @@ from tyche.language import *
 
 class TestLanguage(unittest.TestCase):
     def setUp(self):
-        self.x = Atom('my_X')
-        self.y = Atom('my_Y')
-        self.z = Atom('my_Z')
+        self.x = Concept('my_X')
+        self.y = Concept('my_Y')
+        self.z = Concept('my_Z')
         self.r = 'my_R'
 
     def tearDown(self):
@@ -48,9 +48,9 @@ class TestLanguage(unittest.TestCase):
         self.assertEqual("\u22A4", str(ALWAYS))
         self.assertEqual("\u22A5", str(NEVER))
 
-        a = Atom("a")
-        b = Atom("b")
-        abc = Atom("abc")
+        a = Concept("a")
+        b = Concept("b")
+        abc = Concept("abc")
 
         self.assertEqual("a", str(a))
         self.assertEqual("b", str(b))

@@ -3,7 +3,7 @@ This file contains examples from the paper "Aleatoric Description Logic
 for Probabilistic Reasoning" by Tim French and Thomas Smoker.
 """
 from tyche.individuals import Individual, TycheConceptField, IdentityIndividual, TycheRoleField
-from tyche.language import Atom, ADLNode, ExclusiveRoleDist, Expectation, Exists, TycheLanguageException
+from tyche.language import Concept, ADLNode, ExclusiveRoleDist, Expectation, Exists, TycheLanguageException
 from tyche.probability import TycheProbabilityException
 
 
@@ -76,8 +76,8 @@ if __name__ == "__main__":
     print(model.to_str(detail_lvl=3, indent_lvl=1))
 
     print()
-    has_fever = Atom("has_fever")
-    has_virus = Atom("has_virus")
+    has_fever = Concept("has_fever")
+    has_virus = Concept("has_virus")
     has_virus_or_no_fever = has_fever.complement() | has_virus
 
     def prob_dict_to_str(prob_dict: dict[str, float]):
