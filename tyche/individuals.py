@@ -577,42 +577,35 @@ class Individual(TycheContext):
         Propagates the observation to its sub-concepts.
         e.g. observe (A and B) -> observe A and observe B
         """
-        observation_prob = self.eval(observation)
-        obs_matches_expected_prob = likelihood * observation_prob + (1 - likelihood) * (1 - observation_prob)
-        if obs_matches_expected_prob <= 0:
-            raise TycheIndividualsException(
-                f"The observation is impossible under this model "
-                f"({observation} with likelihood {likelihood} @ {self.name})"
-            )
-
         # Loop through all the sub-concepts of the observation.
         child_concepts = observation.get_child_concepts_in_eval_context()
         for index, child_concept in enumerate(child_concepts):
             if isinstance(child_concept, Constant):
                 continue  # Quick skip
 
+            # We have to calculate this within the loop, as the loop updates the model.
+            observation_prob = self.eval(observation)
+            obs_matches_expected_prob = likelihood * observation_prob + (1 - likelihood) * (1 - observation_prob)
+            if obs_matches_expected_prob <= 0:
+                raise TycheIndividualsException(
+                    f"The observation is impossible under this model "
+                    f"({observation} with likelihood {likelihood} @ {self.name})"
+                )
+
             obs_given_child = observation.copy_with_new_child_concept_from_eval_context(index, ALWAYS)
             obs_given_not_child = observation.copy_with_new_child_concept_from_eval_context(index, NEVER)
 
             child_prob = self.eval(child_concept)
-            not_child_prob = 1 - child_prob
             obs_given_child_prob = self.eval(obs_given_child)
             obs_given_not_child_prob = self.eval(obs_given_not_child)
 
-            child_true_prob = uncertain_bayes_rule(
+            child_likelihood = uncertain_bayes_rule(
                 child_prob, observation_prob, obs_given_child_prob, likelihood)
-            child_false_prob = uncertain_bayes_rule(
-                not_child_prob, observation_prob, obs_given_not_child_prob, likelihood)
 
             # Corresponds to the learning_rate parameter.
             child_influence = abs(obs_given_child_prob - obs_given_not_child_prob)
             if child_influence <= 0:
                 continue
-
-            # Corresponds to the likelihood parameter.
-            if child_true_prob + child_false_prob <= 0:
-                continue
-            child_likelihood = child_true_prob / (child_true_prob + child_false_prob)
 
             # Propagate!
             self.observe(child_concept, child_likelihood, learning_rate * child_influence)
