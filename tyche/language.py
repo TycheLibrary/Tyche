@@ -5,10 +5,10 @@ description logic (ADL) formulas.
 ADL is designed to support both mathematical notion and a formal english notion.
 """
 import random
-from typing import Final, cast, Optional, Union, Tuple, NewType, Callable
+from typing import Final, cast, Optional, Union, Tuple, NewType
 
 from tyche.probability import uncertain_bayes_rule
-from tyche.reference import SymbolReference, BakedSymbolReference
+from tyche.reference import BakedSymbolReference
 from tyche.string_utils import format_dict
 
 
@@ -142,7 +142,7 @@ class ExclusiveRoleDist:
             yield ctx
 
     def apply_bayes_rule(
-            self, observation: 'Concept', likelihood: float = 1, learning_rate: float = 1) -> 'ExclusiveRoleDist':
+            self, observation: 'ADLNode', likelihood: float = 1, learning_rate: float = 1) -> 'ExclusiveRoleDist':
         """
         Applies Bayes' rule to update the probabilities of the individuals
         mapped within this role based upon an uncertain observation. This
@@ -254,7 +254,7 @@ class ExclusiveRoleDist:
 # This is used to allow passing names (e.g. "x", "y", etc...) directly
 # to functions that require a concept or role. These names will then
 # automatically be converted to an Atom or Role object.
-CompatibleWithConcept: type = NewType("CompatibleWithConcept", Union['Concept', str])
+CompatibleWithADLNode: type = NewType("CompatibleWithADLNode", Union['ADLNode', str])
 CompatibleWithRole: type = NewType("CompatibleWithRole", Union['Role', str])
 
 
@@ -265,7 +265,7 @@ class TycheContext:
     Each individual may supply their own context for
     their variables and roles.
     """
-    def eval(self, concept: 'CompatibleWithConcept') -> float:
+    def eval(self, concept: 'CompatibleWithADLNode') -> float:
         """
         Evaluates the given concept to a probability of
         it being true if sampled within this context.
@@ -279,7 +279,7 @@ class TycheContext:
         """
         raise NotImplementedError("eval_role is unimplemented for " + type(self).__name__)
 
-    def observe(self, observation: 'Concept', likelihood: float = 1, learning_rate: float = 1):
+    def observe(self, observation: 'ADLNode', likelihood: float = 1, learning_rate: float = 1):
         """
         Attempts to update the beliefs of this individual based upon
         an observation of the given concept.
@@ -334,7 +334,7 @@ class EmptyContext(TycheContext):
     """
     Provides an empty context for evaluating constant expressions.
     """
-    def eval(self, concept: 'Concept') -> float:
+    def eval(self, concept: 'ADLNode') -> float:
         return concept.direct_eval(self)
 
     def eval_role(self, role: 'Role') -> ExclusiveRoleDist:
@@ -356,30 +356,38 @@ class EmptyContext(TycheContext):
         return f"<EmptyContext>"
 
 
-class Concept:
+class ADLNode:
     """
     The base class of all nodes in aleatoric description logic formulas.
     """
     @staticmethod
-    def cast(concept: CompatibleWithConcept) -> 'Concept':
-        if isinstance(concept, Concept):
-            return concept
-        elif isinstance(concept, str):
-            return Atom(concept)
-        else:
-            raise TycheLanguageException("Incompatible concept type {}".format(type(concept).__name__))
-
-    def get_child_concepts_in_eval_context(self) -> list['Concept']:
+    def cast(node: CompatibleWithADLNode) -> 'ADLNode':
         """
-        Returns an ordered list of the child concepts of this concept that would be
-        evaluated in the same context as this concept is evaluated.
+        This provides the canonicalization of several supported ADL representations
+        into ADLNode objects. For example, strings are automatically considered to
+        represent concepts, and as such they may be converted into concept nodes
+        automatically by this function.
+        """
+        if isinstance(node, ADLNode):
+            return node
+        elif isinstance(node, str):
+            return Atom(node)
+        else:
+            raise TycheLanguageException("Incompatible node type {}".format(type(node).__name__))
+
+    def get_child_nodes_in_eval_context(self) -> list['ADLNode']:
+        """
+        Returns an ordered list of the child nodes of this node that would be
+        evaluated in the same context as this node is evaluated. Nodes that
+        are evaluated in related contexts should not be returned here.
         """
         raise NotImplementedError("get_children_in_eval_context is unimplemented for " + type(self).__name__)
 
-    def copy_with_new_child_concept_from_eval_context(self, index: int, concept: 'Concept'):
+    def copy_with_new_child_node_from_eval_context(self, index: int, node: 'ADLNode'):
         """
-        Returns a copy of this concept with the child concept at the given index
-        in the list returned by get_children_in_eval_context replaced with the given concept.
+        Returns a copy of this node with the child node at the given index in
+        the list returned by get_children_in_eval_context replaced with the given
+        node.
         """
         raise NotImplementedError("copy_with_replaced_child_from_eval_context is unimplemented for " + type(self).__name__)
 
@@ -398,13 +406,13 @@ class Concept:
 
     # maybe also include a function for giving an optimised inline string representation of a formula.
 
-    def __eq__(self, other: 'Concept') -> bool:
+    def __eq__(self, other: 'ADLNode') -> bool:
         """
         return true if formulas are identical
         """
         raise NotImplementedError("__eq__ is unimplemented for " + type(self).__name__)
 
-    def __lt__(self, other: 'Concept') -> bool:
+    def __lt__(self, other: 'ADLNode') -> bool:
         """
         establishes a syntactic ordering over formula
         """
@@ -413,34 +421,34 @@ class Concept:
     def direct_eval(self, context: TycheContext) -> float:
         """
         Disclaimer:
-        This should _NOT_ be called to evaluate concepts about your model, as the
-        TycheContext objects should be given the option to change the method of
+        This should _NOT_ be called to evaluate nodes using your model, as the
+        TycheContext objects should be given the control over the method of
         evaluation. Therefore, TycheContext#eval should usually be used instead.
 
-        Evaluates the probability of this concept evaluating to true when sampled
-        using the values of atoms and roles from the given context.
+        Evaluates the probability of this node evaluating to true when sampled
+        using the values of concepts and roles from the given context and related
+        contexts.
         """
         raise NotImplementedError("direct_eval is unimplemented for " + type(self).__name__)
 
-    def normal_form(self) -> 'Concept':
+    def normal_form(self) -> 'ADLNode':
         """
         Returns the tree normal form of the formula, where atoms are ordered alphabetically.
         """
         raise NotImplementedError("normal_form is unimplemented for " + type(self).__name__)
 
-    def is_equivalent(self, concept: 'Concept') -> bool:
+    def is_equivalent(self, node: 'ADLNode') -> bool:
         """
-        Returns true if this Concept is provably equivalent to concept
-        delegates to normal form function.
-        Two concepts have the same normal form if and only if
-        they have the same evaluation function
+        Returns true if this node is provably equivalent to the given node.
+        Delegates to normal_form function. Two nodes have the same normal form
+        if and only if they have the same evaluation function
         """
-        return self.normal_form() == concept.normal_form()
+        return self.normal_form() == node.normal_form()
 
-    def is_weaker(self, concept: 'Concept') -> bool:
+    def is_weaker(self, node: 'ADLNode') -> bool:
         """
-        Returns true if the probability of this Concept is provably
-        necessarily less than or equal to the probability of concept
+        Returns true if the probability of this node is provably necessarily
+        less than or equal to the probability of the given node.
         """
         # need to consider how to effectively implement this
         # I think move everything to normal form and then some traversal?
@@ -449,14 +457,14 @@ class Concept:
         # need to factor out inclusion, then find separating constants
         raise TycheLanguageException("is_weaker is unimplemented for " + type(self).__name__)
 
-    def is_stronger(self, concept: 'Concept') -> bool:
+    def is_stronger(self, node: 'ADLNode') -> bool:
         """
-        Returns true if the probability of this concept is provably
-        necessarily greater than or equal to the probability of adl_form
+        Returns true if the probability of this node is provably necessarily
+        greater than or equal to the probability of the given node.
         """
-        return concept.is_weaker(self)
+        return node.is_weaker(self)
 
-    def when(self, condition: CompatibleWithConcept) -> 'ConditionalWithoutElse':
+    def when(self, condition: CompatibleWithADLNode) -> 'ConditionalWithoutElse':
         """
         Returns a formula that represents (condition ? self : Always).
         This is equivalent to the formula self -> condition.
@@ -464,38 +472,40 @@ class Concept:
         """
         return ConditionalWithoutElse(condition, self)
 
-    def complement(self) -> 'Concept':
+    def complement(self) -> 'ADLNode':
         """
-        inline negation operator
+        Produces a new node that represents the complement (negation) of this node.
+        i.e., this performs a logical NOT operation to this node.
         """
         return NEVER.when(self).otherwise(ALWAYS)
 
-    def __and__(self, concept) -> 'Concept':
+    def __and__(self, node: CompatibleWithADLNode) -> 'ADLNode':
         """
-        inline conjunction operator,
-        note ordering for lazy evaluation
+        Produces a new node that represents the conjunction of this node and the given node.
+        i.e., this performs a logical AND operation on this node and the given node.
         """
-        return concept.when(self).otherwise(NEVER)
+        return ADLNode.cast(node).when(self).otherwise(NEVER)
 
-    def __or__(self, concept) -> 'Concept':
+    def __or__(self, node: CompatibleWithADLNode) -> 'ADLNode':
         """
-        inline disjunction operator
+        Produces a new node that represents the disjunction of this node and the given node.
+        i.e., this performs a logical OR operation on this node and the given node.
         """
-        return ALWAYS.when(self).otherwise(concept)
+        return ALWAYS.when(self).otherwise(node)
 
     '''
-    Other inline operators to define:
-    concept.for(role)
-    concept.for(role).given(margin)
-    concept.necessary_for(role)
-    concept.possible_for(role)
+    Ideas for other inline operators to define:
+    node.for(role)
+    node.for(role).given(margin)
+    node.necessary_for(role)
+    node.possible_for(role)
     others...
     '''
 
 
-class Atom(Concept):
+class Atom(ADLNode):
     """
-    Represents indivisible concepts such as always, never, constants, and named concepts.
+    Represents indivisible nodes such as concepts and constants such as always or never.
     """
     def __init__(self, symbol: str, *, special_symbol: bool = False, symbol_type_name: str = "Atom"):
         if not special_symbol:
@@ -503,11 +513,11 @@ class Atom(Concept):
 
         self.symbol = symbol
 
-    def get_child_concepts_in_eval_context(self) -> list[Concept]:
+    def get_child_nodes_in_eval_context(self) -> list[ADLNode]:
         return []
 
-    def copy_with_new_child_concept_from_eval_context(self, index: int, concept: Concept):
-        raise IndexError("Atom's have no child concepts")
+    def copy_with_new_child_node_from_eval_context(self, index: int, node: ADLNode):
+        raise IndexError("Atom's have no child nodes")
 
     @staticmethod
     def check_symbol(symbol: str, *, symbol_name="symbol", symbol_type_name: str = "Atom", context: str = None):
@@ -558,10 +568,10 @@ class Atom(Concept):
     def normal_form(self):
         return self
 
-    def is_equivalent(self, concept: Concept) -> bool:
-        return self == concept
+    def is_equivalent(self, node: ADLNode) -> bool:
+        return self == node
 
-    def is_weaker(self, concept):
+    def is_weaker(self, node):
         raise NotImplementedError("is_weaker is unimplemented for " + type(self).__name__)
 
 
@@ -617,21 +627,21 @@ ALWAYS: Final[Constant] = Constant("\u22A4", 1)
 NEVER: Final[Constant] = Constant("\u22A5", 0)
 
 
-class Conditional(Concept):
+class Conditional(ADLNode):
     """
     Represents an aleatoric ternary construct (if-then-else).
     """
-    def __init__(self, condition: CompatibleWithConcept, if_yes: CompatibleWithConcept, if_no: CompatibleWithConcept):
-        self.condition = Concept.cast(condition)
-        self.if_yes = Concept.cast(if_yes)
-        self.if_no = Concept.cast(if_no)
+    def __init__(self, condition: CompatibleWithADLNode, if_yes: CompatibleWithADLNode, if_no: CompatibleWithADLNode):
+        self.condition = ADLNode.cast(condition)
+        self.if_yes = ADLNode.cast(if_yes)
+        self.if_no = ADLNode.cast(if_no)
 
-    def get_child_concepts_in_eval_context(self) -> list[Concept]:
+    def get_child_nodes_in_eval_context(self) -> list[ADLNode]:
         return [self.condition, self.if_yes, self.if_no]
 
-    def copy_with_new_child_concept_from_eval_context(self, index: int, concept: Concept):
-        args = self.get_child_concepts_in_eval_context()
-        args[index] = concept
+    def copy_with_new_child_node_from_eval_context(self, index: int, node: ADLNode):
+        args = self.get_child_nodes_in_eval_context()
+        args[index] = node
         return Conditional(*args)
 
     def __str__(self):
@@ -680,7 +690,7 @@ class Conditional(Concept):
         """
         raise TycheLanguageException("not yet implemented")
 
-    def is_weaker(self, concept):
+    def is_weaker(self, node):
         raise TycheLanguageException("not yet implemented")
 
 
@@ -688,62 +698,63 @@ class ConditionalWithoutElse(Conditional):
     """
     Represents an aleatoric ternary construct of the form (condition ? if_yes : Always).
     """
-    def __init__(self, condition: CompatibleWithConcept, if_yes: CompatibleWithConcept):
+    def __init__(self, condition: CompatibleWithADLNode, if_yes: CompatibleWithADLNode):
         super().__init__(condition, if_yes, ALWAYS)
 
-    def otherwise(self, if_no: Concept) -> Conditional:
+    def otherwise(self, if_no: ADLNode) -> Conditional:
         return Conditional(self.condition, self.if_yes, if_no)
 
 
-class Given(Concept):
+class Given(ADLNode):
     """
-    Represents a concept that should only be evaluated after the given evaluates to true.
+    Represents a node that should only be evaluated after the given evaluates to true.
     Due to this, the evaluation of the Given must be handled by the context.
     Therefore, these should be avoided generally, and only used when they are required.
     """
-    def __init__(self, concept: CompatibleWithConcept, given: CompatibleWithConcept):
-        self.concept = Concept.cast(concept)
-        self.given = Concept.cast(given)
+    def __init__(self, node: CompatibleWithADLNode, given: CompatibleWithADLNode):
+        self.node = ADLNode.cast(node)
+        self.given = ADLNode.cast(given)
 
     @staticmethod
     def maybe_unpack(
-            concept: CompatibleWithConcept,
-            given: Optional[CompatibleWithConcept] = None
-    ) -> tuple[Concept, Concept]:
+            node: CompatibleWithADLNode,
+            given: Optional[CompatibleWithADLNode] = None
+    ) -> tuple[ADLNode, ADLNode]:
         """
-        If the concept is a Given, then this unpacks the Given into its concept and the given itself.
-        If given is provided whilst the concept is also a Given,
-        the resulting given will be the AND of both.
-        Returns a tuple of (concept, given).
+        If the node is a Given, then this unpacks the Given into its constituent node and the given node.
+        If a given is explicitly provided whilst the node is also a Given, the returned given will be
+        the conjunction of both. If the node is not a Given, then the provided node and given will be
+        returned. If the given is not provided, then ALWAYS will be returned for the given.
+        Returns a tuple of (node, given).
         """
-        given: Optional[Concept] = Concept.cast(given) if given is not None else None
-        while isinstance(concept, Given):
-            concept_as_given = cast(Given, concept)
-            concept = concept_as_given.concept
-            given = concept_as_given.given if given is None else given & concept_as_given.given
+        given: Optional[ADLNode] = ADLNode.cast(given) if given is not None else None
+        while isinstance(node, Given):
+            node_as_given = cast(Given, node)
+            node = node_as_given.node
+            given = node_as_given.given if given is None else given & node_as_given.given
 
         if given is None:
             given = ALWAYS
-        return concept, given
+        return node, given
 
-    def get_child_concepts_in_eval_context(self) -> list[Concept]:
+    def get_child_nodes_in_eval_context(self) -> list[ADLNode]:
         return []
 
-    def copy_with_new_child_concept_from_eval_context(self, index: int, concept: Concept):
+    def copy_with_new_child_node_from_eval_context(self, index: int, node: ADLNode):
         raise IndexError("Given operators must be specially handled by the context")
 
     def __str__(self):
-        return f"({self.concept} | {self.given})"
+        return f"({self.node} | {self.given})"
 
     def __repr__(self):
-        return f"Given(concept={repr(self.concept)}, given={repr(self.given)})"
+        return f"Given(node={repr(self.node)}, given={repr(self.given)})"
 
     def __eq__(self, obj):
         if type(obj) != type(self):
             return False
 
         other: 'Given' = cast('Given', obj)
-        return self.concept == other.concept and self.given == other.given
+        return self.node == other.node and self.given == other.given
 
     def __lt__(self, obj):
         raise TycheLanguageException("not yet implemented")
@@ -754,49 +765,49 @@ class Given(Concept):
     def normal_form(self):
         raise TycheLanguageException("not yet implemented")
 
-    def is_weaker(self, concept):
+    def is_weaker(self, node):
         raise TycheLanguageException("not yet implemented")
 
 
-class Expectation(Concept):
+class Expectation(ADLNode):
     """
     Represents the aleatoric expectation construct,
-    'The expectation that concept is true for an individual selected randomly
+    'The expectation that node is true for an individual selected randomly
     from the given role, given that the individual evaluates given to true'.
     If given is not given, then it defaults to always.
     """
     def __init__(
             self,
             role: CompatibleWithRole,
-            concept: CompatibleWithConcept,
-            given: Optional[CompatibleWithConcept] = None):
+            node: CompatibleWithADLNode,
+            given: Optional[CompatibleWithADLNode] = None):
 
-        concept, given = Given.maybe_unpack(concept, given)
+        node, given = Given.maybe_unpack(node, given)
         self.role: Role = Role.cast(role)
-        self.concept: Concept = Concept.cast(concept)
-        self.given = Concept.cast(given) if given is not None else ALWAYS
+        self.node: ADLNode = ADLNode.cast(node)
+        self.given = ADLNode.cast(given) if given is not None else ALWAYS
 
-    def get_child_concepts_in_eval_context(self) -> list[Concept]:
+    def get_child_nodes_in_eval_context(self) -> list[ADLNode]:
         return []
 
-    def copy_with_new_child_concept_from_eval_context(self, index: int, concept: Concept):
-        raise IndexError("Expectation operators have no child concepts in the eval context")
+    def copy_with_new_child_node_from_eval_context(self, index: int, node: ADLNode):
+        raise IndexError("Expectation operators have no child nodes in the eval context")
 
     def __str__(self):
         if self.given == ALWAYS:
-            return f"(\U0001D53C_{str(self.role)}. {str(self.concept)})"
+            return f"(\U0001D53C_{str(self.role)}. {str(self.node)})"
         else:
-            return f"(\U0001D53C_{str(self.role)}. {str(self.concept)} | {str(self.given)})"
+            return f"(\U0001D53C_{str(self.role)}. {str(self.node)} | {str(self.given)})"
 
     def __repr__(self):
-        return f"Expectation(role={repr(self.role)}, concept={repr(self.concept)}, given={repr(self.given)})"
+        return f"Expectation(role={repr(self.role)}, node={repr(self.node)}, given={repr(self.given)})"
 
     def __eq__(self, obj):
         if type(obj) != type(self):
             return False
 
         other: 'Expectation' = cast('Expectation', obj)
-        return self.role == other.role and self.concept == other.concept and self.given == other.given
+        return self.role == other.role and self.node == other.node and self.given == other.given
 
     @staticmethod
     def evaluate_role_under_role(outer_role: ExclusiveRoleDist, inner_role: Role) -> ExclusiveRoleDist:
@@ -817,17 +828,17 @@ class Expectation(Concept):
         return result
 
     @staticmethod
-    def evaluate_for_role(role: ExclusiveRoleDist, concept: Concept, given: Concept) -> float:
+    def evaluate_for_role(role: ExclusiveRoleDist, node: ADLNode, given: ADLNode) -> float:
         """
         Evaluates this expectation over the given role, without requiring a context.
         This evaluation contains an implicit given that the role is non-None. If the
         role only contains None, then this will evaluate to vacuously True.
         """
-        concept, given = Given.maybe_unpack(concept, given)
+        node, given = Given.maybe_unpack(node, given)
 
         total_prob = 0.0
         total_given_prob = 0.0
-        concept_and_given = concept & given
+        node_and_given = node & given
         for other_context, prob in role:
             if other_context is None:
                 continue
@@ -836,7 +847,7 @@ class Expectation(Concept):
             if given_prob <= 0:
                 continue
 
-            true_prob = other_context.eval(concept_and_given)
+            true_prob = other_context.eval(node_and_given)
             total_prob += prob * true_prob
             total_given_prob += prob * given_prob
 
@@ -849,7 +860,7 @@ class Expectation(Concept):
 
     @staticmethod
     def reverse_observation(
-            role: ExclusiveRoleDist, concept: Concept, given: Concept, likelihood: float = 1) -> ExclusiveRoleDist:
+            role: ExclusiveRoleDist, node: ADLNode, given: ADLNode, likelihood: float = 1) -> ExclusiveRoleDist:
         """
         Evaluates to a role that represents the chance that each individual in the role
         was the individual that contributed to the observation. The likelihood gives the
@@ -867,10 +878,10 @@ class Expectation(Concept):
             if given_prob <= 0:
                 continue
 
-            concept_prob = other_context.eval(concept)
+            node_prob = other_context.eval(node)
             given_prob = other_context.eval(given)
 
-            matches_observation_prob = likelihood * concept_prob + (1 - likelihood) * (1 - concept_prob)
+            matches_observation_prob = likelihood * node_prob + (1 - likelihood) * (1 - node_prob)
             chosen_prob = prob * given_prob
             total_given_prob += chosen_prob
 
@@ -889,16 +900,16 @@ class Expectation(Concept):
 
     def direct_eval(self, context: TycheContext):
         """
-        Evaluates the concept for all members of the role mapping
+        Evaluates the node for all members of the role mapping
         from the given context to other contexts. This evaluation
         contains an implicit given that the role is non-None.
         If the role only contains None, then this will evaluate
         to vacuously True.
         """
-        return Expectation.evaluate_for_role(context.eval_role(self.role), self.concept, self.given)
+        return Expectation.evaluate_for_role(context.eval_role(self.role), self.node, self.given)
 
 
-class Exists(Concept):
+class Exists(ADLNode):
     """
     Represents the expectation about whether a value for a role exists.
     i.e. The probability that the value of a role is non-None.
@@ -906,11 +917,11 @@ class Exists(Concept):
     def __init__(self, role: CompatibleWithRole):
         self.role: Role = Role.cast(role)
 
-    def get_child_concepts_in_eval_context(self) -> list[Concept]:
+    def get_child_nodes_in_eval_context(self) -> list[ADLNode]:
         return []
 
-    def copy_with_new_child_concept_from_eval_context(self, index: int, concept: Concept):
-        raise IndexError("Exists concepts have no child concepts")
+    def copy_with_new_child_node_from_eval_context(self, index: int, node: ADLNode):
+        raise IndexError("Exists nodes have no child nodes")
 
     def __str__(self):
         return "(Exists_{})".format(str(self.role))
@@ -944,28 +955,30 @@ class Exists(Concept):
         return 1.0
 
 
-class LeastFixedPoint(Concept):
+class LeastFixedPoint(ADLNode):
     """
+    Disclaimer: This class is not yet functional. It is a work in progress.
+
     class for representing the aleatoric fixed point construct in the language.
     This is equivalent to the marginal expectation operator, (a|b).
     See: https://peteroupc.github.io/bernoulli.html
     """
-    def __init__(self, variable: CompatibleWithRole, concept: CompatibleWithConcept):
-        variable = Role.cast(variable)
-        concept = Concept.cast(concept)
+    def __init__(self, role: CompatibleWithRole, node: CompatibleWithADLNode):
+        role = Role.cast(role)
+        node = ADLNode.cast(node)
 
-        if LeastFixedPoint.is_linear(variable, concept):
-            self.variable = variable  # role object
-            self.concept = concept  # concept object
+        if LeastFixedPoint.is_linear(role, node):
+            self.variable = role
+            self.node = node
         else:
-            raise TycheLanguageException("The variable {} is not linear in {}".format(variable, concept))
+            raise TycheLanguageException("The variable {} is not linear in {}".format(role, node))
 
-    def get_child_concepts_in_eval_context(self) -> list[Concept]:
-        return [self.concept]
+    def get_child_nodes_in_eval_context(self) -> list[ADLNode]:
+        return [self.node]
 
-    def copy_with_new_child_concept_from_eval_context(self, index: int, concept: Concept):
-        args = self.get_child_concepts_in_eval_context()
-        args[index] = concept
+    def copy_with_new_child_node_from_eval_context(self, index: int, node: ADLNode):
+        args = self.get_child_nodes_in_eval_context()
+        args[index] = node
         return Conditional(self.variable, *args)
 
     def __str__(self):
@@ -975,17 +988,17 @@ class LeastFixedPoint(Concept):
         or is assignment appropriate x<=(father.(bald?YES:x)) (GFP is x>=(father.(bald?x:NO)) "all bald on the male line")
         eg LFP-x(father.(bald?YES:x)) the probability of having a bald ancestor on the male line.
         """
-        return self.variable + '<=(' + self.concept + ')'
+        return f"{self.variable}<=({self.node})"
 
     def __repr__(self):
-        return 'LeastFixedPoint(variable=' + repr(self.variable) + ', concept=' + repr(self.concept) + ')'
+        return 'LeastFixedPoint(variable=' + repr(self.variable) + ', node=' + repr(self.node) + ')'
 
     def __eq__(self, obj):
         if type(obj) != type(self):
             return False
 
         other: 'LeastFixedPoint' = cast('LeastFixedPoint', obj)
-        return self.variable == other.variable and self.concept == other.concept
+        return self.variable == other.variable and self.node == other.node
 
     def __lt__(self, other):
         raise TycheLanguageException("not yet implemented")
@@ -1003,15 +1016,15 @@ class LeastFixedPoint(Concept):
         """
         raise TycheLanguageException("not yet implemented")
 
-    def is_equivalent(self, concept):
+    def is_equivalent(self, node):
         raise TycheLanguageException("not yet implemented")
 
-    def is_weaker(self, concept):
+    def is_weaker(self, node):
         raise TycheLanguageException("not yet implemented")
 
     @staticmethod
-    def is_linear(variable, concept):
+    def is_linear(variable, node):
         """
-        class method to test whether variable is linear in concept
+        class method to test whether variable is linear in node
         """
         raise TycheLanguageException("not yet implemented")

@@ -1,12 +1,12 @@
 """
 Provides convenience classes for setting up a model using classes.
 """
-from typing import TypeVar, Callable, get_type_hints, Final, Type, cast, Generic, Optional, Union, overload
+from typing import TypeVar, Callable, get_type_hints, Final, Type, cast, Generic, Optional
 
 import numpy as np
 
-from tyche.language import ExclusiveRoleDist, TycheLanguageException, TycheContext, Atom, Concept, Expectation, \
-    Role, RoleDistributionEntries, ALWAYS, CompatibleWithConcept, CompatibleWithRole, NEVER, Constant, Given
+from tyche.language import ExclusiveRoleDist, TycheLanguageException, TycheContext, Atom, ADLNode, Expectation, \
+    Role, RoleDistributionEntries, ALWAYS, CompatibleWithADLNode, CompatibleWithRole, NEVER, Constant, Given
 
 # Marks instance variables of classes as probabilities that
 # may be accessed by Tyche formulas.
@@ -141,7 +141,7 @@ class IndividualPropertyDecorator(Generic[AccessedValueType]):
 
         self.custom_symbol = symbol
         self.symbol = symbol if symbol is not None else "This symbol"
-        self.fget = fget
+        self.fget: Callable[['Individual'], AccessedValueType] = fget
         self.fset: Optional[Callable[['Individual', AccessedValueType], None]] = None
         self.fdel: Optional[Callable[['Individual'], None]] = None
 
@@ -180,8 +180,12 @@ class IndividualPropertyDecorator(Generic[AccessedValueType]):
         self.fdel = fdel
         return self
 
-    def _create_symbol_reference(self) -> 'FunctionSymbolReference':
-        return FunctionSymbolReference(self.symbol, self.fget, self.fset)
+    def _create_symbol_reference(self) -> 'FunctionSymbolReference'[AccessedValueType]:
+        return FunctionSymbolReference(
+            self.symbol,
+            cast(Callable[[object], AccessedValueType], self.fget),
+            self.fset
+        )
 
     def __set_name__(self, owner: type, name: str):
         ref_map = TycheAccessorStore.get_accessor_ref_map(type(self))
@@ -432,10 +436,10 @@ class Individual(TycheContext):
 
     The concepts and roles about the individual may be stored as instance variables,
     or as methods that supply their value.
-    * Variables can be marked as concepts by giving them the TycheConcept type hint.
-    * Variables can be marked as roles by giving them the TycheRole type hint.
-    * Methods can be marked as concepts using the concept decorator.
-    * Methods can be marked as roles using the role decorator.
+    * Fields can be marked as concepts by giving them the TycheConcept type hint.
+    * Fields can be marked as roles by giving them the TycheRole type hint.
+    * Methods can be marked as concepts using the @concept decorator.
+    * Methods can be marked as roles using the @role decorator.
     """
     name: Optional[str]
     concepts: TycheAccessorStore
@@ -458,12 +462,13 @@ class Individual(TycheContext):
             if concept_ref.learning_strat is not None:
                 self.concept_learning_strats[symbol] = concept_ref.learning_strat.init_for_new_usage()
 
-    def eval(self, concept: CompatibleWithConcept) -> float:
-        # The Given operator does nothing when evaluated at a regular individual.
-        if isinstance(concept, Given):
-            return self.eval(cast(Given, concept).concept)
+    def eval(self, node: CompatibleWithADLNode) -> float:
+        # The Given operator does nothing when evaluated on a regular individual,
+        # as the given and the sentence within the node are independent.
+        if isinstance(node, Given):
+            return self.eval(cast(Given, node).node)
 
-        return Concept.cast(concept).direct_eval(self)
+        return ADLNode.cast(node).direct_eval(self)
 
     def eval_role(self, role: CompatibleWithRole) -> ExclusiveRoleDist:
         return Role.cast(role).direct_eval(self)
@@ -549,7 +554,7 @@ class Individual(TycheContext):
         # Update the role using Bayes' rule.
         observed_role_ref = expectation.role.eval_reference(self)
         prev_role_value = observed_role_ref.get()
-        new_role_value = prev_role_value.apply_bayes_rule(expectation.concept, likelihood, learning_rate)
+        new_role_value = prev_role_value.apply_bayes_rule(expectation.node, likelihood, learning_rate)
         try:
             observed_role_ref.set(new_role_value)
         except TycheReferencesException:
@@ -557,9 +562,9 @@ class Individual(TycheContext):
 
         # Propagate the observation!
         possible_matching_individuals = Expectation.reverse_observation(
-            prev_role_value, expectation.concept, expectation.given, likelihood
+            prev_role_value, expectation.node, expectation.given, likelihood
         )
-        concept_given = Given(expectation.concept, expectation.given)
+        concept_given = Given(expectation.node, expectation.given)
         for ctx, prob in possible_matching_individuals:
             if ctx is not None:
                 ctx.observe(concept_given, likelihood, learning_rate * prob)
@@ -572,15 +577,15 @@ class Individual(TycheContext):
             ref = cast(ConceptFunctionSymbolReference, self.concepts.get_reference(atom.symbol))
             self.concept_learning_strats[atom.symbol].apply(self, ref, likelihood, learning_rate)
 
-    def _observe_sub_concepts(self, observation: Concept, likelihood: float, learning_rate: float):
+    def _observe_child_nodes(self, observation: ADLNode, likelihood: float, learning_rate: float):
         """
-        Propagates the observation to its sub-concepts.
+        Propagates the observation to its child nodes.
         e.g. observe (A and B) -> observe A and observe B
         """
-        # Loop through all the sub-concepts of the observation.
-        child_concepts = observation.get_child_concepts_in_eval_context()
-        for index, child_concept in enumerate(child_concepts):
-            if isinstance(child_concept, Constant):
+        # Loop through all the child nodes of the observation.
+        child_nodes = observation.get_child_nodes_in_eval_context()
+        for index, child_node in enumerate(child_nodes):
+            if isinstance(child_node, Constant):
                 continue  # Quick skip
 
             # We have to calculate this within the loop, as the loop updates the model.
@@ -592,10 +597,10 @@ class Individual(TycheContext):
                     f"({observation} with likelihood {likelihood} @ {self.name})"
                 )
 
-            obs_given_child = observation.copy_with_new_child_concept_from_eval_context(index, ALWAYS)
-            obs_given_not_child = observation.copy_with_new_child_concept_from_eval_context(index, NEVER)
+            obs_given_child = observation.copy_with_new_child_node_from_eval_context(index, ALWAYS)
+            obs_given_not_child = observation.copy_with_new_child_node_from_eval_context(index, NEVER)
 
-            child_prob = self.eval(child_concept)
+            child_prob = self.eval(child_node)
             obs_given_child_prob = self.eval(obs_given_child)
             obs_given_not_child_prob = self.eval(obs_given_not_child)
 
@@ -608,21 +613,21 @@ class Individual(TycheContext):
                 continue
 
             # Propagate!
-            self.observe(child_concept, child_likelihood, learning_rate * child_influence)
+            self.observe(child_node, child_likelihood, learning_rate * child_influence)
 
-    def observe(self, observation: Concept, likelihood: float = 1, learning_rate: float = 1):
+    def observe(self, observation: ADLNode, likelihood: float = 1, learning_rate: float = 1):
         """
         Learns the roles and concepts within this individual based upon the observation,
-        and propagate the observation to its sub-concepts.
+        and propagate the effects of the observation node to its child nodes.
         """
         if isinstance(observation, Expectation):
             self._observe_expectation(cast(Expectation, observation), likelihood, learning_rate)
         elif isinstance(observation, Atom):
             self._observe_atom(cast(Atom, observation), likelihood, learning_rate)
         elif isinstance(observation, Given):
-            self.observe(cast(Given, observation).concept, likelihood, learning_rate)
+            self.observe(cast(Given, observation).node, likelihood, learning_rate)
         else:
-            self._observe_sub_concepts(observation, likelihood, learning_rate)
+            self._observe_child_nodes(observation, likelihood, learning_rate)
 
     def to_str(self, *, detail_lvl: int = 1, indent_lvl: int = 0):
         if detail_lvl <= 0:
@@ -691,8 +696,8 @@ class IdentityIndividual(TycheContext):
         """ Removes the given individual from this identity individual. """
         return self._id.remove(individual)
 
-    def eval(self, concept: 'Concept') -> float:
-        return Expectation.evaluate_for_role(self._id, concept, ALWAYS)
+    def eval(self, node: 'ADLNode') -> float:
+        return Expectation.evaluate_for_role(self._id, node, ALWAYS)
 
     def eval_role(self, role: 'Role') -> ExclusiveRoleDist:
         return role.direct_eval(self)
@@ -713,7 +718,7 @@ class IdentityIndividual(TycheContext):
         raise TycheIndividualsException(
             f"Cannot evaluate mutable roles for instances of {type(self).__name__}")
 
-    def observe(self, observation: 'Concept', likelihood: float = 1, learning_rate: float = 1):
+    def observe(self, observation: 'ADLNode', likelihood: float = 1, learning_rate: float = 1):
         if learning_rate <= 0:
             return
         self._verify_not_empty()
@@ -723,10 +728,10 @@ class IdentityIndividual(TycheContext):
 
         # Propagate the observation!
         obs_is_given = isinstance(observation, Given)
-        concept = observation if not obs_is_given else cast(Given, observation).concept
+        node = observation if not obs_is_given else cast(Given, observation).node
         given = ALWAYS if not obs_is_given else cast(Given, observation).given
         possible_matching_individuals = Expectation.reverse_observation(
-            prev_id_value, concept, given, likelihood
+            prev_id_value, node, given, likelihood
         )
         for ctx, prob in possible_matching_individuals:
             if ctx is not None:

@@ -3,7 +3,7 @@ This file contains examples from the paper "Aleatoric Description Logic
 for Probabilistic Reasoning" by Tim French and Thomas Smoker.
 """
 from tyche.individuals import Individual, TycheConceptField, IdentityIndividual, TycheRoleField
-from tyche.language import Atom, Concept, ExclusiveRoleDist, Expectation, Exists, TycheLanguageException
+from tyche.language import Atom, ADLNode, ExclusiveRoleDist, Expectation, Exists, TycheLanguageException
 from tyche.probability import TycheProbabilityException
 
 
@@ -57,7 +57,7 @@ class VirusTransmissionScenario:
 
         self.individuals = [self.hector, self.igor, self.julia]
 
-    def evaluate_for_individuals(self, concept: Concept):
+    def evaluate_for_individuals(self, concept: ADLNode):
         """ Creates a map from individual names  """
         return {individual.name: individual.eval(concept) for individual in self.individuals}
 

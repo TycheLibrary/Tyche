@@ -115,7 +115,7 @@ if __name__ == "__main__":
     capitalises_first_word = Atom("capitalises_first_word")
     is_positive = Atom("is_positive")
 
-    def generate_conversation_observation(person: Person, message_count: int) -> Concept:
+    def generate_conversation_observation(person: Person, message_count: int) -> ADLNode:
         # Sample the properties of random messages.
         messages = []
         for message_no in range(message_count):
