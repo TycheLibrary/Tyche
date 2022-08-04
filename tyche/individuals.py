@@ -126,55 +126,48 @@ class TycheAccessorStore(Generic[AccessedValueType]):
         return accessors
 
 
+LearningStrategyType = TypeVar("LearningStrategyType", bound='LearningStrategy')
 SelfType_IndividualPropertyDecorator = TypeVar(
     "SelfType_IndividualPropertyDecorator", bound="IndividualPropertyDecorator")
 
 
-class IndividualPropertyDecorator(Generic[AccessedValueType]):
-    """ A decorator to mark methods as providing the value of a concept or role. """
-    def __init__(self: SelfType_IndividualPropertyDecorator, fget: Callable[['Individual'], AccessedValueType], *,
+class IndividualPropertyDecorator(Generic[AccessedValueType, LearningStrategyType]):
+    """
+    A decorator to mark methods as providing the value of a concept or role,
+    and to provide additional metadata or learning functions.
+    """
+    def __init__(self: SelfType_IndividualPropertyDecorator,
+                 fget: Callable[['Individual'], AccessedValueType], *,
                  symbol: Optional[str] = None):
 
-        self.custom_symbol = symbol
-        self.symbol = symbol if symbol is not None else "this symbol"
+        self.custom_symbol: Optional[str] = symbol
+        self.symbol: str = symbol if symbol is not None else "this symbol"
         self.fget: Callable[['Individual'], AccessedValueType] = fget
         self.fset: Optional[Callable[['Individual', AccessedValueType], None]] = None
-        self.fdel: Optional[Callable[['Individual'], None]] = None
+        self.learning_strat: Optional[LearningStrategyType] = None
 
-    def __get__(self, instance: 'Individual', owner) -> AccessedValueType:
+    def __call__(self, instance: Optional['Individual'] = None) -> AccessedValueType:
         if instance is None:
             raise TycheIndividualsException(f"Cannot access {self.symbol} without an instance")
         return self.fget(instance)
 
-    def __set__(self, instance: 'Individual', value: AccessedValueType):
-        if instance is None:
-            raise TycheIndividualsException(f"{self.symbol} can only be modified on an instance")
+    def learning_func(
+            self, learning_strat: Optional[LearningStrategyType] = None
+    ) -> Callable[[Callable[['Individual', AccessedValueType], None]], Callable[['Individual', AccessedValueType], None]]:
+        """
+        This can be used as a decorator to register a method-based setter for this symbol.
+        """
+        def decorator(
+                fset: Callable[['Individual', AccessedValueType], None]
+        ) -> Callable[['Individual', AccessedValueType], None]:
 
-        if self.fset is None:
-            raise TycheIndividualsException(f"{self.symbol} does not provide a setter method")
-        self.fset(instance, value)
+            if self.fset is not None or self.learning_strat is not None:
+                raise TycheIndividualsException(f"{self.symbol} already has a learning function set")
+            self.fset = fset
+            self.learning_strat = learning_strat
+            return fset
 
-    def __delete__(self, instance: 'Individual'):
-        if instance is None:
-            raise TycheIndividualsException(f"{self.symbol} can only be modified on an instance")
-
-        if self.fdel is None:
-            raise TycheIndividualsException(f"{self.symbol} does not provide a deleter method")
-        self.fdel(instance)
-
-    def setter(self, fset: Callable[['Individual', AccessedValueType], None]) -> SelfType_IndividualPropertyDecorator:
-        """ This can be used as a decorator to register a function-based setter for this symbol. """
-        if self.fset is not None:
-            raise TycheIndividualsException(f"{self.symbol} already has a setter method")
-        self.fset = fset
-        return self
-
-    def deleter(self, fdel: Callable[['Individual'], None]) -> SelfType_IndividualPropertyDecorator:
-        """ This can be used as a decorator to register a function-based deleter for this symbol. """
-        if self.fdel is not None:
-            raise TycheIndividualsException(f"{self.symbol} already has a deleter method")
-        self.fdel = fdel
-        return self
+        return decorator
 
     def _create_symbol_reference(self) -> 'FunctionSymbolReference':
         return FunctionSymbolReference(
@@ -194,6 +187,9 @@ class IndividualPropertyDecorator(Generic[AccessedValueType]):
         # Add this symbol to the set of function symbols.
         ref_map[owner][self.symbol] = self._create_symbol_reference()
 
+        # Replace this decorator object with the original get function in the class.
+        setattr(owner, name, self.fget)
+
 
 class ConceptFunctionSymbolReference(FunctionSymbolReference):
     """ Represents a reference to a concept, with additional information about the concept attached. """
@@ -201,13 +197,25 @@ class ConceptFunctionSymbolReference(FunctionSymbolReference):
             self, symbol: str,
             fget: Callable[[any], TycheConceptValue],
             fset: Optional[Callable[[any, TycheConceptValue], None]] = None,
-            learning_strat: Optional['LearningStrategy'] = None
+            learning_strat: Optional['ConceptLearningStrategy'] = None
     ):
         super().__init__(symbol, fget, fset)
         self.learning_strat = learning_strat
 
 
-class TycheConceptDecorator(IndividualPropertyDecorator[TycheConceptValue]):
+class RoleFunctionSymbolReference(FunctionSymbolReference):
+    """ Represents a reference to a concept, with additional information about the concept attached. """
+    def __init__(
+            self, symbol: str,
+            fget: Callable[[any], TycheRoleValue],
+            fset: Optional[Callable[[any, TycheRoleValue], None]] = None,
+            learning_strat: Optional['RoleLearningStrategy'] = None
+    ):
+        super().__init__(symbol, fget, fset)
+        self.learning_strat = learning_strat
+
+
+class TycheConceptDecorator(IndividualPropertyDecorator[TycheConceptValue, 'ConceptLearningStrategy']):
     """
     Marks that a method provides the value of a concept for use in Tyche formulas.
     The name of the function is used as the name of the concept in formulas.
@@ -215,18 +223,13 @@ class TycheConceptDecorator(IndividualPropertyDecorator[TycheConceptValue]):
     field_type_hint: Final[type] = TycheConceptField
 
     def __init__(
-            self: SelfType_IndividualPropertyDecorator, fn: Callable[[], TycheConceptValue], *,
-            symbol: Optional[str] = None,
-            learning_strat: Optional['LearningStrategy'] = None
-    ):
+            self: SelfType_IndividualPropertyDecorator,
+            fn: Callable[[], TycheConceptValue],
+            *, symbol: Optional[str] = None):
+
         super().__init__(fn, symbol=symbol)
-        self.learning_strat = learning_strat
 
     def _create_symbol_reference(self) -> 'FunctionSymbolReference':
-        if self.learning_strat is not None and self.fset is None:
-            raise TycheIndividualsException(
-                f"A learning strategy is supplied for {self.symbol}, but a setter has not been provided for it")
-
         return ConceptFunctionSymbolReference(
             self.symbol, self.fget, self.fset, learning_strat=self.learning_strat
         )
@@ -238,17 +241,24 @@ class TycheConceptDecorator(IndividualPropertyDecorator[TycheConceptValue]):
         )
 
 
-class TycheRoleDecorator(IndividualPropertyDecorator[TycheRoleValue]):
+class TycheRoleDecorator(IndividualPropertyDecorator[TycheRoleValue, 'RoleLearningStrategy']):
     """
     Marks that a method provides the value of a role for use in Tyche formulas.
     The name of the function is used as the name of the role in formulas.
     """
     field_type_hint: Final[type] = TycheRoleField
 
-    def __init__(self: SelfType_IndividualPropertyDecorator, fn: Callable[[], TycheRoleValue],
-                 *, symbol: Optional[str] = None):
+    def __init__(
+            self: SelfType_IndividualPropertyDecorator,
+            fn: Callable[[], TycheRoleValue],
+            *, symbol: Optional[str] = None):
 
         super().__init__(fn, symbol=symbol)
+
+    def _create_symbol_reference(self) -> 'FunctionSymbolReference':
+        return RoleFunctionSymbolReference(
+            self.symbol, self.fget, self.fset, learning_strat=self.learning_strat
+        )
 
     @staticmethod
     def get(obj_type: Type['Individual']) -> TycheAccessorStore:
@@ -258,18 +268,23 @@ class TycheRoleDecorator(IndividualPropertyDecorator[TycheRoleValue]):
 
 
 def concept(
-        *, symbol: Optional[str] = None,
-        learning_strat: Optional['LearningStrategy'] = None
-) -> Callable[[Callable[[], TycheConceptValue]], TycheConceptDecorator]:
-    """ Registers a function as supplying the value of a concept for the evaluation of Tyche expressions. """
+        *, symbol: Optional[str] = None
+) -> Callable[[Callable[['Individual'], TycheConceptValue]], TycheConceptDecorator]:
+    """
+    Registers a method as supplying the value of a concept for the evaluation of Tyche expressions.
+    """
     def annotator(inner_fn: Callable[[], TycheConceptValue]):
-        return TycheConceptDecorator(inner_fn, symbol=symbol, learning_strat=learning_strat)
+        return TycheConceptDecorator(inner_fn, symbol=symbol)
 
     return annotator
 
 
-def role(*, symbol: Optional[str] = None) -> Callable[[Callable[[], TycheRoleValue]], TycheRoleDecorator]:
-    """ Registers a function as supplying the value of a role for the evaluation of Tyche expressions. """
+def role(
+        *, symbol: Optional[str] = None
+) -> Callable[[Callable[[], TycheRoleValue]], TycheRoleDecorator]:
+    """
+    Registers a method as supplying the value of a role for the evaluation of Tyche expressions.
+    """
     def annotator(inner_fn: Callable[[], TycheRoleValue]):
         return TycheRoleDecorator(inner_fn, symbol=symbol)
 
@@ -280,7 +295,7 @@ SelfType_LearningStrategy = TypeVar("SelfType_LearningStrategy", bound="Learning
 
 
 class LearningStrategy:
-    """ An object that applies changes to individuals to update them based upon observations of concepts. """
+    """ Applies changes to individuals to update them based upon observations. """
     def __init__(self: SelfType_LearningStrategy):
         pass
 
@@ -293,15 +308,42 @@ class LearningStrategy:
         """
         return self
 
+
+class ConceptLearningStrategy(LearningStrategy):
+    """
+    Applies changes to individuals to update them based upon observations of concepts.
+    """
     def apply(
-            self, individual: TycheContext, concept_ref: ConceptFunctionSymbolReference,
-            likelihood: float, learning_rate: float
-    ):
-        """ Modifies the individual to learn the given concept from the given observation of it. """
+            self: SelfType_LearningStrategy,
+            individual: TycheContext,
+            concept_ref: ConceptFunctionSymbolReference,
+            observation: ADLNode,
+            likelihood: float,
+            learning_rate: float):
+        """
+        Modifies the individual to learn the given concept from the given observation of it.
+        """
         raise NotImplementedError(f"{type(self).__name__} does not implement apply")
 
 
-class DirectLearningStrategy(LearningStrategy):
+class RoleLearningStrategy(LearningStrategy):
+    """
+    Applies changes to individuals to update them based upon observations over roles.
+    """
+    def apply(
+            self: SelfType_LearningStrategy,
+            individual: TycheContext,
+            role_ref: RoleFunctionSymbolReference,
+            observation: ADLNode,
+            likelihood: float,
+            learning_rate: float):
+        """
+        Modifies the individual to learn the given concept from the given observation of it.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not implement apply")
+
+
+class DirectLearningStrategy(ConceptLearningStrategy):
     """
     The most basic learning strategy that simply updates concepts
     to the values they were observed as. A learning rate can be
@@ -320,9 +362,13 @@ class DirectLearningStrategy(LearningStrategy):
         self.learning_rate = learning_rate
 
     def apply(
-            self, individual: TycheContext, concept_ref: ConceptFunctionSymbolReference,
-            likelihood: float, learning_rate: float
-    ):
+            self: SelfType_LearningStrategy,
+            individual: TycheContext,
+            concept_ref: ConceptFunctionSymbolReference,
+            observation: ADLNode,
+            likelihood: float,
+            learning_rate: float):
+
         # Limit the learning by the learning rate applied for the strategy.
         learning_rate *= self.learning_rate
 
@@ -345,7 +391,7 @@ class DirectLearningStrategy(LearningStrategy):
         return f"{type(self).__name__}(learning_rate={self.learning_rate})"
 
 
-class StatisticalLearningStrategy(LearningStrategy):
+class StatisticalLearningStrategy(ConceptLearningStrategy):
     """
     This learning strategy accumulates a running mean of observations
     about a concept, and uses it to learn the value of the concept.
@@ -399,8 +445,13 @@ class StatisticalLearningStrategy(LearningStrategy):
             initial_value=self.initial_value
         )
 
-    def apply(self, individual: TycheContext, concept_ref: ConceptFunctionSymbolReference,
-              likelihood: float, learning_rate: float):
+    def apply(
+            self: SelfType_LearningStrategy,
+            individual: TycheContext,
+            concept_ref: ConceptFunctionSymbolReference,
+            observation: ADLNode,
+            likelihood: float,
+            learning_rate: float):
 
         # Decay old observations over time.
         self.running_learning_rate_sum *= self.decay_rate
@@ -444,7 +495,8 @@ class Individual(TycheContext):
     name: Optional[str]
     concepts: TycheAccessorStore
     roles: TycheAccessorStore
-    concept_learning_strats: dict[str, LearningStrategy]
+    concept_learning_strats: dict[str, ConceptLearningStrategy]
+    role_learning_strats: dict[str, RoleLearningStrategy]
 
     def __init__(self, name: Optional[str] = None):
         super().__init__()
@@ -461,6 +513,15 @@ class Individual(TycheContext):
             concept_ref = cast(ConceptFunctionSymbolReference, ref)
             if concept_ref.learning_strat is not None:
                 self.concept_learning_strats[symbol] = concept_ref.learning_strat.init_for_new_usage()
+
+        self.role_learning_strats = {}
+        for symbol, ref in self.roles.accessors.items():
+            if not isinstance(ref, RoleFunctionSymbolReference):
+                continue
+
+            role_ref = cast(RoleFunctionSymbolReference, ref)
+            if role_ref.learning_strat is not None:
+                self.role_learning_strats[symbol] = role_ref.learning_strat.init_for_new_usage()
 
     def eval(self, node: CompatibleWithADLNode) -> float:
         # The Given operator does nothing when evaluated on a regular individual,
@@ -575,7 +636,7 @@ class Individual(TycheContext):
         """
         if atom.symbol in self.concept_learning_strats:
             ref = cast(ConceptFunctionSymbolReference, self.concepts.get_reference(atom.symbol))
-            self.concept_learning_strats[atom.symbol].apply(self, ref, likelihood, learning_rate)
+            self.concept_learning_strats[atom.symbol].apply(self, ref, atom, likelihood, learning_rate)
 
     def _observe_child_nodes(self, observation: ADLNode, likelihood: float, learning_rate: float):
         """

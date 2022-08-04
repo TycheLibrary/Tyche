@@ -14,7 +14,7 @@ import functools
 
 
 # We want to decay earlier observations faster than later observations.
-# This is done to improve convergence as more observations are added,
+# This is done to improve convergence as observations are made,
 # while allowing the model to change more during early learning.
 decaying_learning_strat = StatisticalLearningStrategy(
     decay_rate=0.95, decay_rate_for_decay_rate=0.95
@@ -43,29 +43,29 @@ class Person(Individual):
     def conversed_with(self):
         return self._conversed_with
 
-    @concept(learning_strat=decaying_learning_strat)
+    @concept()
     def uses_emoji(self):
         return self._uses_emoji
 
-    @uses_emoji.setter
-    def uses_emoji(self, uses_emoji: float):
-        self._uses_emoji = uses_emoji
+    @uses_emoji.learning_func(decaying_learning_strat)
+    def set_uses_emoji(self, prob: float):
+        self._uses_emoji = prob
 
-    @concept(learning_strat=decaying_learning_strat)
+    @concept()
     def capitalises_first_word(self):
         return self._capitalises_first_word
 
-    @capitalises_first_word.setter
-    def capitalises_first_word(self, capitalises_first_word: float):
-        self._capitalises_first_word = capitalises_first_word
+    @capitalises_first_word.learning_func(decaying_learning_strat)
+    def set_capitalises_first_word(self, prob: float):
+        self._capitalises_first_word = prob
 
-    @concept(learning_strat=decaying_learning_strat)
+    @concept()
     def is_positive(self):
         return self._is_positive
 
-    @is_positive.setter
-    def is_positive(self, is_positive: float):
-        self._is_positive = is_positive
+    @is_positive.learning_func(decaying_learning_strat)
+    def set_is_positive(self, prob: float):
+        self._is_positive = prob
 
     def sample_message(self) -> tuple[bool, bool, bool]:
         """ Randomly samples this individual to a Person with known properties. """
@@ -81,12 +81,12 @@ if __name__ == "__main__":
     target_bob = Person("Bob", uses_emoji=0.9, capitalises_first_word=0.4, is_positive=0.15)
     target_alice = Person("Alice", uses_emoji=0.1, capitalises_first_word=0.8, is_positive=0.4)
     target_jeff = Person("Jeff", uses_emoji=0.5, capitalises_first_word=0.5, is_positive=0.5)
-    target_bob.conversed_with.add(target_alice)
-    target_bob.conversed_with.add(target_jeff)
-    target_alice.conversed_with.add(target_bob)
-    target_alice.conversed_with.add(target_jeff)
-    target_jeff.conversed_with.add(target_alice)
-    target_jeff.conversed_with.add(target_bob)
+    target_bob.conversed_with().add(target_alice)
+    target_bob.conversed_with().add(target_jeff)
+    target_alice.conversed_with().add(target_bob)
+    target_alice.conversed_with().add(target_jeff)
+    target_jeff.conversed_with().add(target_alice)
+    target_jeff.conversed_with().add(target_bob)
 
     target_people = [target_bob, target_alice, target_jeff]
 
@@ -95,12 +95,12 @@ if __name__ == "__main__":
         bob = Person("Bob")
         alice = Person("Alice")
         jeff = Person("Jeff")
-        bob.conversed_with.add(alice)
-        bob.conversed_with.add(jeff)
-        alice.conversed_with.add(bob)
-        alice.conversed_with.add(jeff)
-        jeff.conversed_with.add(alice)
-        jeff.conversed_with.add(bob)
+        bob.conversed_with().add(alice)
+        bob.conversed_with().add(jeff)
+        alice.conversed_with().add(bob)
+        alice.conversed_with().add(jeff)
+        jeff.conversed_with().add(alice)
+        jeff.conversed_with().add(bob)
         return bob, alice, jeff
 
     # The parameters for our evaluation of the knowledge extraction.
@@ -111,18 +111,18 @@ if __name__ == "__main__":
     # We generate 'conversations' of a small number of messages.
     min_messages = 2
     max_messages = 4
-    uses_emoji = Concept("uses_emoji")
-    capitalises_first_word = Concept("capitalises_first_word")
-    is_positive = Concept("is_positive")
+    c_uses_emoji = Concept("uses_emoji")
+    c_capitalises_first_word = Concept("capitalises_first_word")
+    c_is_positive = Concept("is_positive")
 
     def generate_conversation_observation(person: Person, message_count: int) -> ADLNode:
         # Sample the properties of random messages.
         messages = []
         for message_no in range(message_count):
             m_uses_emoji, m_capitalises, m_is_positive = person.sample_message()
-            o_uses_emoji = uses_emoji if m_uses_emoji else uses_emoji.complement()
-            o_capitalises = capitalises_first_word if m_capitalises else capitalises_first_word.complement()
-            o_is_positive = is_positive if m_is_positive else is_positive.complement()
+            o_uses_emoji = c_uses_emoji if m_uses_emoji else c_uses_emoji.complement()
+            o_capitalises = c_capitalises_first_word if m_capitalises else c_capitalises_first_word.complement()
+            o_is_positive = c_is_positive if m_is_positive else c_is_positive.complement()
             messages.append(o_uses_emoji & o_capitalises & o_is_positive)
 
         # Combine the messages into one observation.
@@ -145,7 +145,7 @@ if __name__ == "__main__":
             learned_ctx = learned_people_by_name[target_ctx.name]
 
             # Sample the messages of the conversation.
-            partner = cast(Person, target_ctx.conversed_with.sample())
+            partner = cast(Person, target_ctx.conversed_with().sample())
             conversation = generate_conversation_observation(partner, random.randint(min_messages, max_messages))
             observation = Expectation("conversed_with", conversation)
             if len(example_observations) < 10:
@@ -169,9 +169,9 @@ if __name__ == "__main__":
     print("Learned People:")
     for target in target_people:
         learned = [people[target.name] for people in trial_results]
-        learned_uses_emoji = [p.uses_emoji for p in learned]
-        learned_capitalises = [p.capitalises_first_word for p in learned]
-        learned_is_positive = [p.is_positive for p in learned]
+        learned_uses_emoji = [p.uses_emoji() for p in learned]
+        learned_capitalises = [p.capitalises_first_word() for p in learned]
+        learned_is_positive = [p.is_positive() for p in learned]
         print(f"- {target.name}("
               f"capitalises_first_word={np.mean(learned_capitalises):.3f} ± {np.std(learned_capitalises):.3f}, "
               f"is_positive={np.mean(learned_is_positive):.3f} ± {np.std(learned_is_positive):.3f}, "
