@@ -803,9 +803,9 @@ class Expectation(ADLNode):
 
     def __str__(self):
         if self.given == ALWAYS:
-            return f"(\U0001D53C_{str(self.role)}. {str(self.node)})"
+            return f"[{str(self.role)}]({str(self.node)})"
         else:
-            return f"(\U0001D53C_{str(self.role)}. {str(self.node)} | {str(self.given)})"
+            return f"[{str(self.role)}.]({str(self.node)} | {str(self.given)})"
 
     def __repr__(self):
         return f"Expectation(role={repr(self.role)}, node={repr(self.node)}, given={repr(self.given)})"
@@ -932,7 +932,7 @@ class Exists(ADLNode):
         raise IndexError("Exists nodes have no child nodes")
 
     def __str__(self):
-        return "(Exists_{})".format(str(self.role))
+        return "Exists[{}]".format(str(self.role))
 
     def __repr__(self):
         return "Exists(role={})".format(repr(self.role))
