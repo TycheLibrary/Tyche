@@ -1,5 +1,5 @@
 """
-This file contains utility methods to help the
+This module contains utility methods to help with the
 formatting of strings in Tyche.
 """
 from typing import TypeVar, Callable, Iterable, Union

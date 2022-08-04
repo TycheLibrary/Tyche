@@ -1,5 +1,5 @@
 """
-Example python class for prototyping usage of the package
+Example python class for prototyping usage of the package.
 This example is for tracking student performance (grades)
 and likely project supervisor.
 """

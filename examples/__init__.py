@@ -1,3 +1,3 @@
 """
-This directory contains example uses of Tyche.
+This package contains example uses of Tyche.
 """

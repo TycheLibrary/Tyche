@@ -1,6 +1,7 @@
 """
-This file contains the definitions of probability
-distributions to be used with Tyche.
+This module contains the definitions of probability distributions
+that can be easily manipulated for use alongside Tyche's other
+functionality.
 """
 import math
 from typing import Union

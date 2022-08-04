@@ -1,5 +1,10 @@
 """
-Provides convenience classes for setting up a model using classes.
+This module contains classes used to construct ontological knowledge bases
+of individuals, the probabilistic beliefs about them (concepts), and the
+probabilistic relationships between them (roles). These belief models
+can be used as contexts to evaluate aleatoric description logic (ADL)
+sentences. This module also contains many learning strategies that may
+be used to update your belief models based upon ADL observations.
 """
 from typing import TypeVar, Callable, get_type_hints, Final, Type, cast, Generic, Optional
 
@@ -7,10 +12,10 @@ import numpy as np
 
 from tyche.language import ExclusiveRoleDist, TycheLanguageException, TycheContext, Concept, ADLNode, Expectation, \
     Role, RoleDistributionEntries, ALWAYS, CompatibleWithADLNode, CompatibleWithRole, NEVER, Constant, Given, \
-    ConstantRole, ReferenceBackedRole
+    ReferenceBackedRole
 
 from tyche.probability import uncertain_bayes_rule
-from tyche.reference import SymbolReference, FieldSymbolReference, GuardedSymbolReference, FunctionSymbolReference, \
+from tyche.references import SymbolReference, FieldSymbolReference, GuardedSymbolReference, FunctionSymbolReference, \
     BakedSymbolReference
 
 

@@ -1,6 +1,6 @@
 """
-This file contains the examples from the 'Tyche: A library for
-probabilistic reasoning and belief modelling in Python' paper.
+This file contains the examples from the "Tyche: A library for
+probabilistic reasoning and belief modelling in Python" paper.
 """
 from tyche.distributions import *
 from tyche.individuals import *

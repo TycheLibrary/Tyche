@@ -1,5 +1,6 @@
 """
-Contains probability calculations that are used in many places in Tyche.
+This module contains probability calculations that are
+used in many places in Tyche.
 """
 
 

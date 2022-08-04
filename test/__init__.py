@@ -1,3 +1,3 @@
 """
-This directory contains tests for Tyche.
+This package contains tests for Tyche.
 """

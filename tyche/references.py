@@ -1,5 +1,7 @@
 """
-Contains functionality to represent references to variables.
+This module contains functionality to represent references to concepts
+or roles. These references allow the value of concepts or roles to be
+fetched from individuals, and updated with new values within individuals.
 """
 from typing import Generic, TypeVar, Callable, Optional
 

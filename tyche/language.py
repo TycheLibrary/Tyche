@@ -1,14 +1,12 @@
 """
-The classes for representing and reasoning about aleatoric
-description logic (ADL) formulas.
-
-ADL is designed to support both mathematical notion and a formal english notion.
+This module contains the classes for representing aleatoric description
+logic (ADL) sentences, and the maths for their evaluation.
 """
 import random
 from typing import Final, cast, Optional, Union, Tuple, NewType
 
 from tyche.probability import uncertain_bayes_rule
-from tyche.reference import BakedSymbolReference, SymbolReference
+from tyche.references import BakedSymbolReference, SymbolReference
 from tyche.string_utils import format_dict
 
 

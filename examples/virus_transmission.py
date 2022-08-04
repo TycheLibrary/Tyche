@@ -1,8 +1,9 @@
 """
-This file contains examples from the paper "Aleatoric Description Logic
-for Probabilistic Reasoning" by Tim French and Thomas Smoker.
+This file contains the virus transmission example from the paper
+"Aleatoric Description Logic for Probabilistic Reasoning" by
+Tim French and Thomas Smoker.
 """
-from tyche.individuals import Individual, TycheConceptField, IdentityIndividual, TycheRoleField, role, \
+from tyche.individuals import Individual, TycheConceptField, IdentityIndividual, role, \
     BayesRoleLearningStrategy
 from tyche.language import Concept, ADLNode, ExclusiveRoleDist, Expectation
 from tyche.probability import TycheProbabilityException
