@@ -343,7 +343,7 @@ class RoleLearningStrategy(LearningStrategy):
         raise NotImplementedError(f"{type(self).__name__} does not implement apply")
 
 
-class DirectLearningStrategy(ConceptLearningStrategy):
+class DirectConceptLearningStrategy(ConceptLearningStrategy):
     """
     The most basic learning strategy that simply updates concepts
     to the values they were observed as. A learning rate can be
@@ -391,7 +391,7 @@ class DirectLearningStrategy(ConceptLearningStrategy):
         return f"{type(self).__name__}(learning_rate={self.learning_rate})"
 
 
-class StatisticalLearningStrategy(ConceptLearningStrategy):
+class StatisticalConceptLearningStrategy(ConceptLearningStrategy):
     """
     This learning strategy accumulates a running mean of observations
     about a concept, and uses it to learn the value of the concept.
@@ -478,6 +478,30 @@ class StatisticalLearningStrategy(ConceptLearningStrategy):
     def __str__(self):
         return f"{type(self).__name__}" \
                f"(initial_value_weight={self.initial_value_weight:.3f}, decay_rate={self.decay_rate:.3f})"
+
+
+class BayesRoleLearningStrategy(RoleLearningStrategy):
+    """  """
+    def __init__(self, learning_rate: float = 1.0):
+        super().__init__()
+        self.learning_rate = learning_rate
+
+    def apply(
+            self: SelfType_LearningStrategy,
+            individual: TycheContext,
+            role_ref: RoleFunctionSymbolReference,
+            observation: ADLNode,
+            likelihood: float,
+            learning_rate: float):
+
+        if isinstance(observation, Expectation):
+            # Update the role using Bayes' rule.
+            expectation = cast(Expectation, observation)
+            prev_role_value = role_ref.get()
+            new_role_value = prev_role_value.apply_bayes_rule(
+                expectation.node, likelihood, learning_rate * self.learning_rate
+            )
+            role_ref.set(new_role_value)
 
 
 class Individual(TycheContext):
@@ -612,14 +636,12 @@ class Individual(TycheContext):
         """
         Applies role learning to the role, and propagates the observation.
         """
-        # Update the role using Bayes' rule.
-        observed_role_ref = expectation.role.eval_reference(self)
-        prev_role_value = observed_role_ref.get()
-        new_role_value = prev_role_value.apply_bayes_rule(expectation.node, likelihood, learning_rate)
-        try:
-            observed_role_ref.set(new_role_value)
-        except TycheReferencesException:
-            pass  # TODO: Just allow learning_strat for roles to be configurable like concepts also
+        # Apply any learning strategy that may be present.
+        symbol = expectation.role.symbol
+        prev_role_value = self.get_role(symbol)
+        if symbol in self.role_learning_strats:
+            ref = cast(RoleFunctionSymbolReference, self.roles.get_reference(symbol))
+            self.role_learning_strats[symbol].apply(self, ref, expectation, likelihood, learning_rate)
 
         # Propagate the observation!
         possible_matching_individuals = Expectation.reverse_observation(
@@ -630,13 +652,13 @@ class Individual(TycheContext):
             if ctx is not None:
                 ctx.observe(concept_given, likelihood, learning_rate * prob)
 
-    def _observe_atom(self, atom: Concept, likelihood: float, learning_rate: float):
+    def _observe_atom(self, node: Concept, likelihood: float, learning_rate: float):
         """
         If a learning strategy is set for the observed concept, this applies it.
         """
-        if atom.symbol in self.concept_learning_strats:
-            ref = cast(ConceptFunctionSymbolReference, self.concepts.get_reference(atom.symbol))
-            self.concept_learning_strats[atom.symbol].apply(self, ref, atom, likelihood, learning_rate)
+        if node.symbol in self.concept_learning_strats:
+            ref = cast(ConceptFunctionSymbolReference, self.concepts.get_reference(node.symbol))
+            self.concept_learning_strats[node.symbol].apply(self, ref, node, likelihood, learning_rate)
 
     def _observe_child_nodes(self, observation: ADLNode, likelihood: float, learning_rate: float):
         """

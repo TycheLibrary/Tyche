@@ -16,7 +16,7 @@ import functools
 # We want to decay earlier observations faster than later observations.
 # This is done to improve convergence as observations are made,
 # while allowing the model to change more during early learning.
-decaying_learning_strat = StatisticalLearningStrategy(
+decaying_learning_strat = StatisticalConceptLearningStrategy(
     decay_rate=0.95, decay_rate_for_decay_rate=0.95
 )
 
@@ -26,6 +26,7 @@ class Person(Individual):
     An example person that has a set of preferences when writing messages.
     """
     name: str
+    conversed_with: TycheRoleField
 
     def __init__(
             self, name: str,
@@ -34,14 +35,10 @@ class Person(Individual):
             is_positive: TycheConceptValue = 0.5):
 
         super().__init__(name)
-        self._conversed_with = ExclusiveRoleDist()
+        self.conversed_with = ExclusiveRoleDist()
         self._uses_emoji = uses_emoji
         self._capitalises_first_word = capitalises_first_word
         self._is_positive = is_positive
-
-    @role()
-    def conversed_with(self):
-        return self._conversed_with
 
     @concept()
     def uses_emoji(self):
@@ -81,12 +78,12 @@ if __name__ == "__main__":
     target_bob = Person("Bob", uses_emoji=0.9, capitalises_first_word=0.4, is_positive=0.15)
     target_alice = Person("Alice", uses_emoji=0.1, capitalises_first_word=0.8, is_positive=0.4)
     target_jeff = Person("Jeff", uses_emoji=0.5, capitalises_first_word=0.5, is_positive=0.5)
-    target_bob.conversed_with().add(target_alice)
-    target_bob.conversed_with().add(target_jeff)
-    target_alice.conversed_with().add(target_bob)
-    target_alice.conversed_with().add(target_jeff)
-    target_jeff.conversed_with().add(target_alice)
-    target_jeff.conversed_with().add(target_bob)
+    target_bob.conversed_with.add(target_alice)
+    target_bob.conversed_with.add(target_jeff)
+    target_alice.conversed_with.add(target_bob)
+    target_alice.conversed_with.add(target_jeff)
+    target_jeff.conversed_with.add(target_alice)
+    target_jeff.conversed_with.add(target_bob)
 
     target_people = [target_bob, target_alice, target_jeff]
 
@@ -95,12 +92,12 @@ if __name__ == "__main__":
         bob = Person("Bob")
         alice = Person("Alice")
         jeff = Person("Jeff")
-        bob.conversed_with().add(alice)
-        bob.conversed_with().add(jeff)
-        alice.conversed_with().add(bob)
-        alice.conversed_with().add(jeff)
-        jeff.conversed_with().add(alice)
-        jeff.conversed_with().add(bob)
+        bob.conversed_with.add(alice)
+        bob.conversed_with.add(jeff)
+        alice.conversed_with.add(bob)
+        alice.conversed_with.add(jeff)
+        jeff.conversed_with.add(alice)
+        jeff.conversed_with.add(bob)
         return bob, alice, jeff
 
     # The parameters for our evaluation of the knowledge extraction.
@@ -145,7 +142,7 @@ if __name__ == "__main__":
             learned_ctx = learned_people_by_name[target_ctx.name]
 
             # Sample the messages of the conversation.
-            partner = cast(Person, target_ctx.conversed_with().sample())
+            partner = cast(Person, target_ctx.conversed_with.sample())
             conversation = generate_conversation_observation(partner, random.randint(min_messages, max_messages))
             observation = Expectation("conversed_with", conversation)
             if len(example_observations) < 10:

@@ -26,7 +26,7 @@ class Person(Individual):
     def is_tall(self) -> float:
         return self.height_cm > self.tall_cutoff
 
-    @is_tall.learning_func(StatisticalLearningStrategy(initial_value_weight=1))
+    @is_tall.learning_func(StatisticalConceptLearningStrategy(initial_value_weight=1))
     def is_tall(self, prob: float):
         # Move the mean of the height distribution to a point where is_tall would return prob.
         # This relies on the tall cutoff point and the standard deviation of height being fixed.

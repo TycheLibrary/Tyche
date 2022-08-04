@@ -31,6 +31,6 @@ class Student(Person):
     def good_grades(self):
         return self._good_grades
 
-    @good_grades.learning_func(DirectLearningStrategy(0.5))
+    @good_grades.learning_func(DirectConceptLearningStrategy(0.5))
     def set_good_grades(self, good_grades: float):
         self._good_grades = good_grades
