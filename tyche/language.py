@@ -8,7 +8,7 @@ import random
 from typing import Final, cast, Optional, Union, Tuple, NewType
 
 from tyche.probability import uncertain_bayes_rule
-from tyche.reference import BakedSymbolReference
+from tyche.reference import BakedSymbolReference, SymbolReference
 from tyche.string_utils import format_dict
 
 
@@ -625,7 +625,7 @@ class Role:
         return "{}(symbol={})".format(type(self).__name__, self.symbol)
 
     def __eq__(self, other) -> bool:
-        return type(self) == type(other) and self.symbol == cast('Atom', other).symbol
+        return type(self) == type(other) and self.symbol == cast('Role', other).symbol
 
     def direct_eval(self, context: TycheContext) -> ExclusiveRoleDist:
         return context.get_role(self.symbol)
@@ -633,6 +633,46 @@ class Role:
     def eval_reference(self, context: TycheContext) -> BakedSymbolReference[ExclusiveRoleDist]:
         """ Evaluates to a mutable reference to the value of this role. """
         return context.get_role_reference(self.symbol)
+
+
+class ConstantRole(Role):
+    """
+    Represents a relationship that is constant.
+    """
+    def __init__(self, symbol: str, value: ExclusiveRoleDist):
+        super().__init__(symbol, special_symbol=True)
+        self.value = value
+
+    def __eq__(self, other) -> bool:
+        return type(self) == type(other) \
+               and self.symbol == cast('ConstantRole', other).symbol \
+               and self.value == cast('ConstantRole', other).value
+
+    def direct_eval(self, context: TycheContext) -> ExclusiveRoleDist:
+        return self.value
+
+    def eval_reference(self, context: TycheContext) -> BakedSymbolReference[ExclusiveRoleDist]:
+        """ Evaluates to a mutable reference to the value of this role. """
+        raise TycheLanguageException(f"Instances of {type(self).__name__} are immutable")
+
+
+class ReferenceBackedRole(Role):
+    """
+    Represents a relationship that's value is taken from a reference.
+    """
+    def __init__(self, value_ref: SymbolReference[ExclusiveRoleDist]):
+        super().__init__(value_ref.symbol, special_symbol=True)
+        self.value_ref = value_ref
+
+    def __eq__(self, other) -> bool:
+        return type(self) == type(other) and self.value_ref == cast('ReferenceBackedRole', other).value_ref
+
+    def direct_eval(self, context: TycheContext) -> ExclusiveRoleDist:
+        return self.value_ref.get(context)
+
+    def eval_reference(self, context: TycheContext) -> BakedSymbolReference[ExclusiveRoleDist]:
+        """ Evaluates to a mutable reference to the value of this role. """
+        return self.value_ref.bake(context)
 
 
 class Conditional(ADLNode):
@@ -787,13 +827,23 @@ class Expectation(ADLNode):
     def __init__(
             self,
             role: CompatibleWithRole,
-            node: CompatibleWithADLNode,
-            given: Optional[CompatibleWithADLNode] = None):
+            eval_node: CompatibleWithADLNode,
+            given_node: Optional[CompatibleWithADLNode] = None):
 
-        node, given = Given.maybe_unpack(node, given)
+        eval_node, given_node = Given.maybe_unpack(eval_node, given_node)
         self.role: Role = Role.cast(role)
-        self.node: ADLNode = ADLNode.cast(node)
-        self.given = ADLNode.cast(given) if given is not None else ALWAYS
+        self.eval_node: ADLNode = ADLNode.cast(eval_node)
+        self.given_node = ADLNode.cast(given_node) if given_node is not None else ALWAYS
+
+    def get_content_node(self) -> ADLNode:
+        """
+        Returns a node that contains the contents of this expectation including both
+        the evaluation node, and the given node if one was provided on construction.
+        """
+        if self.given_node == ALWAYS:
+            return self.eval_node
+        else:
+            return Given(self.eval_node, self.given_node)
 
     def get_child_nodes_in_eval_context(self) -> list[ADLNode]:
         return []
@@ -802,20 +852,20 @@ class Expectation(ADLNode):
         raise IndexError("Expectation operators have no child nodes in the eval context")
 
     def __str__(self):
-        if self.given == ALWAYS:
-            return f"[{str(self.role)}]({str(self.node)})"
+        if self.given_node == ALWAYS:
+            return f"[{str(self.role)}]({str(self.eval_node)})"
         else:
-            return f"[{str(self.role)}.]({str(self.node)} | {str(self.given)})"
+            return f"[{str(self.role)}.]({str(self.eval_node)} | {str(self.given_node)})"
 
     def __repr__(self):
-        return f"Expectation(role={repr(self.role)}, node={repr(self.node)}, given={repr(self.given)})"
+        return f"Expectation(role={repr(self.role)}, node={repr(self.eval_node)}, given={repr(self.given_node)})"
 
     def __eq__(self, obj):
         if type(obj) != type(self):
             return False
 
         other: 'Expectation' = cast('Expectation', obj)
-        return self.role == other.role and self.node == other.node and self.given == other.given
+        return self.role == other.role and self.eval_node == other.eval_node and self.given_node == other.given_node
 
     @staticmethod
     def evaluate_role_under_role(outer_role: ExclusiveRoleDist, inner_role: Role) -> ExclusiveRoleDist:
@@ -914,7 +964,7 @@ class Expectation(ADLNode):
         If the role only contains None, then this will evaluate
         to vacuously True.
         """
-        return Expectation.evaluate_for_role(context.eval_role(self.role), self.node, self.given)
+        return Expectation.evaluate_for_role(context.eval_role(self.role), self.eval_node, self.given_node)
 
 
 class Exists(ADLNode):

@@ -54,21 +54,22 @@ class BakedSymbolReference(Generic[SymbolType]):
         self.ref.set(self.obj, value)
 
 
-class PropertySymbolReference(Generic[SymbolType], SymbolReference[SymbolType]):
-    """ Represents a reference to a mutable property in an object. """
-    def __init__(self, symbol: str):
+class FieldSymbolReference(Generic[SymbolType], SymbolReference[SymbolType]):
+    """ Represents a reference to a field in an object. """
+    def __init__(self, symbol: str, *, field_name: Optional[str] = None):
         super().__init__(symbol)
+        self.field_name = symbol if field_name is None else field_name
 
     def is_mutable(self) -> bool:
         return True
 
     def get(self, obj: object) -> SymbolType:
-        return getattr(obj, self.symbol)
+        return getattr(obj, self.field_name)
 
     def set(self, obj: object, value: SymbolType):
-        if not hasattr(obj, self.symbol):
-            raise TycheReferencesException(f"The object does not contain the property {self.symbol}. The object is {obj}")
-        setattr(obj, self.symbol, value)
+        if not hasattr(obj, self.field_name):
+            raise TycheReferencesException(f"The object does not contain the field {self.symbol}. The object is {obj}")
+        setattr(obj, self.field_name, value)
 
 
 class FunctionSymbolReference(Generic[SymbolType], SymbolReference[SymbolType]):

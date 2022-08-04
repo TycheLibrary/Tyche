@@ -6,10 +6,11 @@ from typing import TypeVar, Callable, get_type_hints, Final, Type, cast, Generic
 import numpy as np
 
 from tyche.language import ExclusiveRoleDist, TycheLanguageException, TycheContext, Concept, ADLNode, Expectation, \
-    Role, RoleDistributionEntries, ALWAYS, CompatibleWithADLNode, CompatibleWithRole, NEVER, Constant, Given
+    Role, RoleDistributionEntries, ALWAYS, CompatibleWithADLNode, CompatibleWithRole, NEVER, Constant, Given, \
+    ConstantRole, ReferenceBackedRole
 
 from tyche.probability import uncertain_bayes_rule
-from tyche.reference import SymbolReference, PropertySymbolReference, GuardedSymbolReference, FunctionSymbolReference, \
+from tyche.reference import SymbolReference, FieldSymbolReference, GuardedSymbolReference, FunctionSymbolReference, \
     BakedSymbolReference
 
 
@@ -122,7 +123,7 @@ class TycheAccessorStore(Generic[AccessedValueType]):
                 Concept.check_symbol(name, symbol_name=symbol_name, symbol_type_name=symbol_type_name, context=context)
 
         # Store the accessors in the type object.
-        var_references = {symbol: PropertySymbolReference(symbol) for symbol in fields}
+        var_references = {symbol: FieldSymbolReference(symbol) for symbol in fields}
         all_references = {**method_references, **var_references}
         accessors = TycheAccessorStore(type_name, all_references)
         stores_cache_map[obj_type] = accessors
@@ -183,7 +184,10 @@ class IndividualPropertyDecorator(Generic[AccessedValueType, LearningStrategyTyp
 
     def learning_func(
             self, learning_strat: Optional[LearningStrategyType] = None
-    ) -> Callable[[Callable[['Individual', AccessedValueType], None]], Callable[['Individual', AccessedValueType], None]]:
+    ) -> Callable[
+        [Callable[['Individual', AccessedValueType], None]],
+        Callable[['Individual', AccessedValueType], None]
+    ]:
         """
         This can be used as a decorator to register a method-based setter for this symbol.
         """
@@ -512,7 +516,8 @@ class BayesRoleLearningStrategy(RoleLearningStrategy):
             expectation = cast(Expectation, observation)
             prev_role_value = role_ref.get(individual)
             new_role_value = prev_role_value.apply_bayes_rule(
-                expectation.node, likelihood, learning_rate * self.learning_rate
+                Given(expectation.eval_node, expectation.given_node),
+                likelihood, learning_rate * self.learning_rate
             )
             role_ref.set(individual, new_role_value)
 
@@ -658,9 +663,9 @@ class Individual(TycheContext):
 
         # Propagate the observation!
         possible_matching_individuals = Expectation.reverse_observation(
-            prev_role_value, expectation.node, expectation.given, likelihood
+            prev_role_value, expectation.eval_node, expectation.given_node, likelihood
         )
-        concept_given = Given(expectation.node, expectation.given)
+        concept_given = Given(expectation.eval_node, expectation.given_node)
         for ctx, prob in possible_matching_individuals:
             if ctx is not None:
                 ctx.observe(concept_given, likelihood, learning_rate * prob)
@@ -756,28 +761,34 @@ class IdentityIndividual(TycheContext):
     The None-individual is not supported for identity roles.
     """
     name: Optional[str]
-    _id: TycheRoleValue
+    learning_strat: Optional[RoleLearningStrategy]
+    id_role_value: TycheRoleValue
+    id_role_ref: FieldSymbolReference = FieldSymbolReference("<id>", field_name="id_role_value")
+    id_role: Role = ReferenceBackedRole(id_role_ref)
 
     def __init__(
             self,
-            id_role: Optional[ExclusiveRoleDist] = None, *,
-            name: Optional[str] = None, entries: RoleDistributionEntries = None):
+            id_role_value: Optional[ExclusiveRoleDist] = None, *,
+            name: Optional[str] = None,
+            entries: RoleDistributionEntries = None,
+            learning_strat: Optional[RoleLearningStrategy] = BayesRoleLearningStrategy()):
 
         super().__init__()
         self.name = name
+        self.learning_strat = None if learning_strat is None else learning_strat.init_for_new_usage()
 
-        if id_role is not None and entries is not None:
+        if id_role_value is not None and entries is not None:
             raise TycheIndividualsException(
-                "An id_role distribution and a set of entries for the id_role cannot both be supplied at once")
+                "An id_role_value distribution and a set of entries for the id role cannot both be supplied at once")
 
-        self._id = id_role if id_role is not None else ExclusiveRoleDist(entries)
-        for ctx in self._id.contexts():
+        self.id_role_value = id_role_value if id_role_value is not None else ExclusiveRoleDist(entries)
+        for ctx in self.id_role_value.contexts():
             if ctx is None:
                 raise TycheIndividualsException("None individuals are not supported by IndividualIdentity")
 
     def is_empty(self) -> bool:
         """ Returns whether no possible individuals have been added. """
-        return self._id.is_empty()
+        return self.id_role_value.is_empty()
 
     def _verify_not_empty(self):
         if self.is_empty():
@@ -795,21 +806,21 @@ class IdentityIndividual(TycheContext):
         if individual is None:
             raise TycheIndividualsException("None individuals are not supported by IndividualIdentity")
 
-        self._id.add(individual, weight)
+        self.id_role_value.add(individual, weight)
 
     def remove(self, individual: TycheContext):
         """ Removes the given individual from this identity individual. """
-        return self._id.remove(individual)
+        return self.id_role_value.remove(individual)
 
     def eval(self, node: 'ADLNode') -> float:
-        return Expectation.evaluate_for_role(self._id, node, ALWAYS)
+        return Expectation.evaluate_for_role(self.id_role_value, node, ALWAYS)
 
     def eval_role(self, role: 'Role') -> ExclusiveRoleDist:
         return role.direct_eval(self)
 
     def get_role(self, symbol: str) -> ExclusiveRoleDist:
         self._verify_not_empty()
-        return Expectation.evaluate_role_under_role(self._id, Role(symbol))
+        return Expectation.evaluate_role_under_role(self.id_role_value, Role(symbol))
 
     def get_concept(self, symbol: str) -> float:
         raise TycheIndividualsException(
@@ -828,13 +839,15 @@ class IdentityIndividual(TycheContext):
             return
         self._verify_not_empty()
 
-        prev_id_value = self._id
-        self._id = prev_id_value.apply_bayes_rule(observation, likelihood, learning_rate)
+        prev_id_value = self.id_role_value
+        node, given = Given.maybe_unpack(observation)
+
+        # Apply any learning strategy that is set for this IdentityIndividual.
+        if self.learning_strat is not None:
+            implicit_expectation = Expectation(self.id_role, node, given)
+            self.learning_strat.apply(self, self.id_role_ref, implicit_expectation, likelihood, learning_rate)
 
         # Propagate the observation!
-        obs_is_given = isinstance(observation, Given)
-        node = observation if not obs_is_given else cast(Given, observation).node
-        given = ALWAYS if not obs_is_given else cast(Given, observation).given
         possible_matching_individuals = Expectation.reverse_observation(
             prev_id_value, node, given, likelihood
         )
@@ -848,11 +861,11 @@ class IdentityIndividual(TycheContext):
         represent this individual, and their probability.
         """
         self._verify_not_empty()
-        for ctx, prob in self._id:
+        for ctx, prob in self.id_role_value:
             yield ctx, prob
 
     def to_str(self, *, detail_lvl: int = 1, indent_lvl: int = 0):
         if detail_lvl <= 0:
             return self.name
 
-        return f"{self.name}{self._id.to_str(detail_lvl=detail_lvl, indent_lvl=indent_lvl)}"
+        return f"{self.name}{self.id_role_value.to_str(detail_lvl=detail_lvl, indent_lvl=indent_lvl)}"
