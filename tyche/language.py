@@ -47,7 +47,7 @@ class ExclusiveRoleDist:
                         continue
                     if isinstance(entry, tuple):
                         ctx, weight = entry
-                        if isinstance(ctx, TycheContext) and isinstance(weight, float):
+                        if (isinstance(ctx, TycheContext) or ctx is None) and isinstance(weight, (bool, int, float)):
                             self.add(ctx, weight)
                             continue
 

@@ -8,15 +8,16 @@ import numpy as np
 from tyche.language import ExclusiveRoleDist, TycheLanguageException, TycheContext, Concept, ADLNode, Expectation, \
     Role, RoleDistributionEntries, ALWAYS, CompatibleWithADLNode, CompatibleWithRole, NEVER, Constant, Given
 
-# Marks instance variables of classes as probabilities that
-# may be accessed by Tyche formulas.
 from tyche.probability import uncertain_bayes_rule
 from tyche.reference import SymbolReference, PropertySymbolReference, GuardedSymbolReference, FunctionSymbolReference, \
-    BakedSymbolReference, TycheReferencesException
+    BakedSymbolReference
+
 
 TycheConceptValue = TypeVar("TycheConceptValue", float, int, bool)
 TycheRoleValue = TypeVar("TycheRoleValue", bound=ExclusiveRoleDist)
 
+# Marks instance variables of classes as probabilities that
+# may be accessed by Tyche formulas.
 TycheConceptField = TypeVar("TycheConceptField", float, int, bool)
 TycheRoleField = TypeVar("TycheRoleField", bound=ExclusiveRoleDist)
 
@@ -84,7 +85,9 @@ class TycheAccessorStore(Generic[AccessedValueType]):
         return accessor_ref_maps[accessor_type]
 
     @staticmethod
-    def get_or_populate_for(obj_type: type, accessor_type: type, field_type_hint: type) -> 'TycheAccessorStore':
+    def get_or_populate_for(
+            obj_type: type, accessor_type: type, field_type_hint: type, type_name: str
+    ) -> 'TycheAccessorStore':
         """
         Gets or populates the set of accessors associated with obj_type, and returns them.
         """
@@ -95,100 +98,35 @@ class TycheAccessorStore(Generic[AccessedValueType]):
         # Get the references populated by annotations.
         refs_map = TycheAccessorStore.get_accessor_ref_map(accessor_type)
         method_references: dict[str, SymbolReference[AccessedValueType]] = {}
-        for parent_or_obj_type in obj_type.mro():
+        for parent_or_obj_type in reversed(obj_type.mro()):
             if parent_or_obj_type in refs_map:
                 method_references.update(refs_map[parent_or_obj_type])
 
         # Get the set of variables that can be accessed from obj_type.
         # These include the fields from parent classes automatically.
-        variables: set[str] = set()
+        fields: set[str] = set()
         for symbol, type_hint in get_type_hints(obj_type).items():
             if type_hint == field_type_hint:
-                variables.add(symbol)
+                fields.add(symbol)
                 if symbol in method_references:
                     raise TycheIndividualsException(
                         "The {} {} in type {} cannot be provided as both a variable and a method".format(
-                            accessor_type.__name__, symbol, obj_type.__name__
+                            type_name, symbol, obj_type.__name__
                         ))
 
         # Check that all the symbol names are valid.
-        for symbol_name, name_set in [("variable", variables), ("method", method_references.keys())]:
-            symbol_type_name = accessor_type.__name__.capitalize()
+        for symbol_name, name_set in [("field", fields), ("method", method_references.keys())]:
+            symbol_type_name = type_name.capitalize()
             context = "type {}".format(obj_type.__name__)
             for name in name_set:
                 Concept.check_symbol(name, symbol_name=symbol_name, symbol_type_name=symbol_type_name, context=context)
 
         # Store the accessors in the type object.
-        var_references = {symbol: PropertySymbolReference(symbol) for symbol in variables}
+        var_references = {symbol: PropertySymbolReference(symbol) for symbol in fields}
         all_references = {**method_references, **var_references}
-        accessors = TycheAccessorStore(accessor_type.__name__, all_references)
+        accessors = TycheAccessorStore(type_name, all_references)
         stores_cache_map[obj_type] = accessors
         return accessors
-
-
-LearningStrategyType = TypeVar("LearningStrategyType", bound='LearningStrategy')
-SelfType_IndividualPropertyDecorator = TypeVar(
-    "SelfType_IndividualPropertyDecorator", bound="IndividualPropertyDecorator")
-
-
-class IndividualPropertyDecorator(Generic[AccessedValueType, LearningStrategyType]):
-    """
-    A decorator to mark methods as providing the value of a concept or role,
-    and to provide additional metadata or learning functions.
-    """
-    def __init__(self: SelfType_IndividualPropertyDecorator,
-                 fget: Callable[['Individual'], AccessedValueType], *,
-                 symbol: Optional[str] = None):
-
-        self.custom_symbol: Optional[str] = symbol
-        self.symbol: str = symbol if symbol is not None else "this symbol"
-        self.fget: Callable[['Individual'], AccessedValueType] = fget
-        self.fset: Optional[Callable[['Individual', AccessedValueType], None]] = None
-        self.learning_strat: Optional[LearningStrategyType] = None
-
-    def __call__(self, instance: Optional['Individual'] = None) -> AccessedValueType:
-        if instance is None:
-            raise TycheIndividualsException(f"Cannot access {self.symbol} without an instance")
-        return self.fget(instance)
-
-    def learning_func(
-            self, learning_strat: Optional[LearningStrategyType] = None
-    ) -> Callable[[Callable[['Individual', AccessedValueType], None]], Callable[['Individual', AccessedValueType], None]]:
-        """
-        This can be used as a decorator to register a method-based setter for this symbol.
-        """
-        def decorator(
-                fset: Callable[['Individual', AccessedValueType], None]
-        ) -> Callable[['Individual', AccessedValueType], None]:
-
-            if self.fset is not None or self.learning_strat is not None:
-                raise TycheIndividualsException(f"{self.symbol} already has a learning function set")
-            self.fset = fset
-            self.learning_strat = learning_strat
-            return fset
-
-        return decorator
-
-    def _create_symbol_reference(self) -> 'FunctionSymbolReference':
-        return FunctionSymbolReference(
-            self.symbol,
-            cast(Callable[[object], AccessedValueType], self.fget),
-            self.fset
-        )
-
-    def __set_name__(self, owner: type, name: str):
-        ref_map = TycheAccessorStore.get_accessor_ref_map(type(self))
-        if owner not in ref_map:
-            ref_map[owner] = {}
-
-        # Allow the user to override the symbol that is used.
-        self.symbol = name if self.custom_symbol is None else self.custom_symbol
-
-        # Add this symbol to the set of function symbols.
-        ref_map[owner][self.symbol] = self._create_symbol_reference()
-
-        # Replace this decorator object with the original get function in the class.
-        setattr(owner, name, self.fget)
 
 
 class ConceptFunctionSymbolReference(FunctionSymbolReference):
@@ -215,6 +153,81 @@ class RoleFunctionSymbolReference(FunctionSymbolReference):
         self.learning_strat = learning_strat
 
 
+LearningStrategyType = TypeVar("LearningStrategyType", bound='LearningStrategy')
+SelfType_IndividualPropertyDecorator = TypeVar(
+    "SelfType_IndividualPropertyDecorator", bound="IndividualPropertyDecorator")
+
+
+class IndividualPropertyDecorator(Generic[AccessedValueType, LearningStrategyType]):
+    """
+    A decorator to mark methods as providing the value of a concept or role,
+    and to provide additional metadata or learning functions.
+    """
+    def __init__(
+            self: SelfType_IndividualPropertyDecorator,
+            type_name: str,
+            fget: Callable[['Individual'], AccessedValueType], *,
+            symbol: Optional[str] = None):
+
+        self.type_name = type_name
+        self.custom_symbol: Optional[str] = symbol
+        self.symbol: str = symbol if symbol is not None else "this symbol"
+        self.fget: Callable[['Individual'], AccessedValueType] = fget
+        self.fset: Optional[Callable[['Individual', AccessedValueType], None]] = None
+        self.learning_strat: Optional[LearningStrategyType] = None
+
+    def __call__(self, instance: Optional['Individual'] = None) -> AccessedValueType:
+        if instance is None:
+            raise TycheIndividualsException(f"Cannot access {self.symbol} without an instance")
+        return self.fget(instance)
+
+    def learning_func(
+            self, learning_strat: Optional[LearningStrategyType] = None
+    ) -> Callable[[Callable[['Individual', AccessedValueType], None]], Callable[['Individual', AccessedValueType], None]]:
+        """
+        This can be used as a decorator to register a method-based setter for this symbol.
+        """
+        def decorator(
+                fset: Callable[['Individual', AccessedValueType], None]
+        ) -> Callable[['Individual', AccessedValueType], None]:
+
+            if self.fset is not None or self.learning_strat is not None:
+                raise TycheIndividualsException(f"{self.symbol} already has a learning function set")
+            self.fset = fset
+            self.learning_strat = learning_strat
+
+            # Try to detect a potentially common error that is otherwise hard to spot.
+            if self.fset is not None and self.fget.__name__ is not None and self.fget.__name__ == self.fset.__name__:
+                raise TycheIndividualsException(
+                    f"The name of the {self.fget.__name__} {self.type_name}'s getter and learning "
+                    f"functions must not be the same")
+
+            return fset
+
+        return decorator
+
+    def _create_symbol_reference(self) -> 'FunctionSymbolReference':
+        return FunctionSymbolReference(
+            self.symbol,
+            cast(Callable[[object], AccessedValueType], self.fget),
+            self.fset
+        )
+
+    def __set_name__(self, owner: type, name: str):
+        ref_map = TycheAccessorStore.get_accessor_ref_map(type(self))
+        if owner not in ref_map:
+            ref_map[owner] = {}
+
+        # Allow the user to override the symbol that is used.
+        self.symbol = name if self.custom_symbol is None else self.custom_symbol
+
+        # Add this symbol to the set of function symbols.
+        ref_map[owner][self.symbol] = self._create_symbol_reference()
+
+        # Replace this decorator object with the original get function in the class.
+        setattr(owner, name, self.fget)
+
+
 class TycheConceptDecorator(IndividualPropertyDecorator[TycheConceptValue, 'ConceptLearningStrategy']):
     """
     Marks that a method provides the value of a concept for use in Tyche formulas.
@@ -227,7 +240,7 @@ class TycheConceptDecorator(IndividualPropertyDecorator[TycheConceptValue, 'Conc
             fn: Callable[[], TycheConceptValue],
             *, symbol: Optional[str] = None):
 
-        super().__init__(fn, symbol=symbol)
+        super().__init__("concept", fn, symbol=symbol)
 
     def _create_symbol_reference(self) -> 'FunctionSymbolReference':
         return ConceptFunctionSymbolReference(
@@ -237,7 +250,7 @@ class TycheConceptDecorator(IndividualPropertyDecorator[TycheConceptValue, 'Conc
     @staticmethod
     def get(obj_type: Type['Individual']) -> TycheAccessorStore:
         return TycheAccessorStore.get_or_populate_for(
-            obj_type, TycheConceptDecorator, TycheConceptDecorator.field_type_hint
+            obj_type, TycheConceptDecorator, TycheConceptDecorator.field_type_hint, "concept"
         )
 
 
@@ -253,7 +266,7 @@ class TycheRoleDecorator(IndividualPropertyDecorator[TycheRoleValue, 'RoleLearni
             fn: Callable[[], TycheRoleValue],
             *, symbol: Optional[str] = None):
 
-        super().__init__(fn, symbol=symbol)
+        super().__init__("role", fn, symbol=symbol)
 
     def _create_symbol_reference(self) -> 'FunctionSymbolReference':
         return RoleFunctionSymbolReference(
@@ -263,7 +276,7 @@ class TycheRoleDecorator(IndividualPropertyDecorator[TycheRoleValue, 'RoleLearni
     @staticmethod
     def get(obj_type: Type['Individual']) -> TycheAccessorStore:
         return TycheAccessorStore.get_or_populate_for(
-            obj_type, TycheRoleDecorator, TycheRoleDecorator.field_type_hint
+            obj_type, TycheRoleDecorator, TycheRoleDecorator.field_type_hint, "role"
         )
 
 
@@ -497,11 +510,11 @@ class BayesRoleLearningStrategy(RoleLearningStrategy):
         if isinstance(observation, Expectation):
             # Update the role using Bayes' rule.
             expectation = cast(Expectation, observation)
-            prev_role_value = role_ref.get()
+            prev_role_value = role_ref.get(individual)
             new_role_value = prev_role_value.apply_bayes_rule(
                 expectation.node, likelihood, learning_rate * self.learning_rate
             )
-            role_ref.set(new_role_value)
+            role_ref.set(individual, new_role_value)
 
 
 class Individual(TycheContext):

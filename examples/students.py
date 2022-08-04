@@ -18,7 +18,7 @@ class Person(Individual):
         self.tall_cutoff = 6 * 30.48  # 6 feet in cm
         self.is_male = False
 
-    @concept
+    @concept()
     def adult(self) -> float:
         return self.age >= 18
 
@@ -27,7 +27,7 @@ class Person(Individual):
         return self.height_cm > self.tall_cutoff
 
     @is_tall.learning_func(StatisticalConceptLearningStrategy(initial_value_weight=1))
-    def is_tall(self, prob: float):
+    def set_is_tall(self, prob: float):
         # Move the mean of the height distribution to a point where is_tall would return prob.
         # This relies on the tall cutoff point and the standard deviation of height being fixed.
         current_mean = self.height_cm.mean()
@@ -38,20 +38,26 @@ class Person(Individual):
 
 
 class Student(Person):
-    supervisor: TycheRoleField
-
     def __init__(self, name: str = None, gender=None, age=None, gpa=50):
         super().__init__(name=name)
         self.gpa = NormalDist(60, 10).truncate(0, 100)
-        self.supervisor = ExclusiveRoleDist()
+        self._supervisor = ExclusiveRoleDist()
 
-    @concept
+    @concept()
     def student(self) -> float:
         return 1.0
 
-    @concept
+    @concept()
     def passed(self):
         return self.gpa > 50
+
+    @role()
+    def supervisor(self):
+        return self._supervisor
+
+    @supervisor.learning_func(BayesRoleLearningStrategy())
+    def set_supervisor(self, dist: ExclusiveRoleDist):
+        self._supervisor = dist
 
     # @concept('score_above<cut_off>')
     # def _scoreabove(self, cut_off):
@@ -70,7 +76,7 @@ class Supervisor(Person):
         self.age = self.age.truncate(21, 120)
         self._wwcc = wwcc
 
-    @concept
+    @concept()
     def student(self) -> float:
         return 0.0
 
@@ -87,11 +93,11 @@ if __name__ == "__main__":
     print(Individual.describe(Supervisor))
 
     clare = Student("Clare")
-    natasha = Supervisor("Natasha", 0.7)
+    natasha = Supervisor("Natasha", 0.25)
     tim = Supervisor("Tim", 0.85)
-    clare.supervisor.add(natasha, 2)
-    clare.supervisor.add(tim, 0.5)
-    clare.supervisor.add(None, 1)
+    clare.supervisor().add(natasha, 2)
+    clare.supervisor().add(tim, 0.5)
+    clare.supervisor().add(None, 1)
 
     print()
     print("Model:")
@@ -132,6 +138,13 @@ if __name__ == "__main__":
     print("P(clare's supervisor is a tall adult) = {:.3f}".format(clare.eval(supervisor_tall_adult)))
     print()
     print("clare's supervisor has a WWCC = {}".format(supervisor_WWCC))
+    print("P(clare's supervisor has a WWCC) = {:.3f}".format(clare.eval(supervisor_WWCC)))
+    print()
+    print("Learning Clare's Supervisor:")
+    print(f"* Before: {clare.supervisor()}")
+    clare.observe(Expectation("supervisor", "wwcc", ALWAYS))
+    print(f"* After: {clare.supervisor()}")
+    print()
     print("P(clare's supervisor has a WWCC) = {:.3f}".format(clare.eval(supervisor_WWCC)))
     print()
 
