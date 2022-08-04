@@ -756,12 +756,21 @@ class IdentityIndividual(TycheContext):
     The None-individual is not supported for identity roles.
     """
     name: Optional[str]
-    _id: TycheRoleField
+    _id: TycheRoleValue
 
-    def __init__(self, *, name: Optional[str] = None, entries: RoleDistributionEntries = None):
+    def __init__(
+            self,
+            id_role: Optional[ExclusiveRoleDist] = None, *,
+            name: Optional[str] = None, entries: RoleDistributionEntries = None):
+
         super().__init__()
         self.name = name
-        self._id = ExclusiveRoleDist(entries)
+
+        if id_role is not None and entries is not None:
+            raise TycheIndividualsException(
+                "An id_role distribution and a set of entries for the id_role cannot both be supplied at once")
+
+        self._id = id_role if id_role is not None else ExclusiveRoleDist(entries)
         for ctx in self._id.contexts():
             if ctx is None:
                 raise TycheIndividualsException("None individuals are not supported by IndividualIdentity")

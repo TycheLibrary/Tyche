@@ -45,7 +45,7 @@ class VirusTransmissionScenario:
         i_contact = ExclusiveRoleDist()
         self.i0 = VirusTransmissionIndividual("Igor_0", 0.0, 0.3, i_contact)
         self.i1 = VirusTransmissionIndividual("Igor_1", 1.0, 0.8, i_contact)
-        self.igor = IdentityIndividual(name="Igor", entries=[self.i0, self.i1])
+        self.igor = IdentityIndividual(ExclusiveRoleDist([self.i0, self.i1]), name="Igor")
 
         j_contact = ExclusiveRoleDist()
         self.j0 = VirusTransmissionIndividual("Julia_0", 0.0, 0.2, j_contact)
