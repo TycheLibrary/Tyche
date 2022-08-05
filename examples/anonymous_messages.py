@@ -7,6 +7,10 @@ explicitly knowing which sources sent any of the messages. For example,
 we can learn that Bob uses emojis often, without knowing what messages
 Bob sent. This is achieved through the use of the observation learning
 mechanisms of the individuals module of Tyche.
+
+The Jupyter notebook with the same name as this file in this directory
+also provides a commentary and more structure to about what this code
+is doing and its results.
 """
 from tyche.individuals import *
 from tyche.language import *
@@ -16,8 +20,11 @@ import functools
 # We want to decay earlier observations faster than later observations.
 # This is done to improve convergence as observations are made,
 # while allowing the model to change more during early learning.
-decaying_learning_strat = StatisticalConceptLearningStrategy(
+decaying_concept_learning_strat = StatisticalConceptLearningStrategy(
     decay_rate=0.95, decay_rate_for_decay_rate=0.95
+)
+decaying_role_learning_strat = StatisticalRoleLearningStrategy(
+    decay_rate=0.75, decay_rate_for_decay_rate=0.99
 )
 
 
@@ -26,7 +33,7 @@ class Person(Individual):
     An example person that has a set of preferences when writing messages.
     """
     name: str
-    conversed_with: TycheRoleField
+    _conversed_with: TycheRoleValue
 
     def __init__(
             self, name: str,
@@ -35,16 +42,24 @@ class Person(Individual):
             is_positive: TycheConceptValue = 0.5):
 
         super().__init__(name)
-        self.conversed_with = ExclusiveRoleDist()
+        self._conversed_with = ExclusiveRoleDist()
         self._uses_emoji = uses_emoji
         self._capitalises_first_word = capitalises_first_word
         self._is_positive = is_positive
+
+    @role()
+    def conversed_with(self):
+        return self._conversed_with
+
+    @conversed_with.learning_func(decaying_role_learning_strat)
+    def set_conversed_with(self, dist: ExclusiveRoleDist):
+        self._conversed_with = dist
 
     @concept()
     def uses_emoji(self):
         return self._uses_emoji
 
-    @uses_emoji.learning_func(decaying_learning_strat)
+    @uses_emoji.learning_func(decaying_concept_learning_strat)
     def set_uses_emoji(self, prob: float):
         self._uses_emoji = prob
 
@@ -52,7 +67,7 @@ class Person(Individual):
     def capitalises_first_word(self):
         return self._capitalises_first_word
 
-    @capitalises_first_word.learning_func(decaying_learning_strat)
+    @capitalises_first_word.learning_func(decaying_concept_learning_strat)
     def set_capitalises_first_word(self, prob: float):
         self._capitalises_first_word = prob
 
@@ -60,7 +75,7 @@ class Person(Individual):
     def is_positive(self):
         return self._is_positive
 
-    @is_positive.learning_func(decaying_learning_strat)
+    @is_positive.learning_func(decaying_concept_learning_strat)
     def set_is_positive(self, prob: float):
         self._is_positive = prob
 
@@ -78,12 +93,15 @@ if __name__ == "__main__":
     target_bob = Person("Bob", uses_emoji=0.9, capitalises_first_word=0.4, is_positive=0.15)
     target_alice = Person("Alice", uses_emoji=0.1, capitalises_first_word=0.8, is_positive=0.4)
     target_jeff = Person("Jeff", uses_emoji=0.5, capitalises_first_word=0.5, is_positive=0.5)
-    target_bob.conversed_with.add(target_alice)
-    target_bob.conversed_with.add(target_jeff)
-    target_alice.conversed_with.add(target_bob)
-    target_alice.conversed_with.add(target_jeff)
-    target_jeff.conversed_with.add(target_alice)
-    target_jeff.conversed_with.add(target_bob)
+
+    target_bob.conversed_with().add(target_alice, 1.5)
+    target_bob.conversed_with().add(target_jeff, 1)
+
+    target_alice.conversed_with().add(target_bob, 1)
+    target_alice.conversed_with().add(target_jeff, 3)
+
+    target_jeff.conversed_with().add(target_alice, 3)
+    target_jeff.conversed_with().add(target_bob, 1.5)
 
     target_people = [target_bob, target_alice, target_jeff]
 
@@ -92,18 +110,18 @@ if __name__ == "__main__":
         bob = Person("Bob")
         alice = Person("Alice")
         jeff = Person("Jeff")
-        bob.conversed_with.add(alice)
-        bob.conversed_with.add(jeff)
-        alice.conversed_with.add(bob)
-        alice.conversed_with.add(jeff)
-        jeff.conversed_with.add(alice)
-        jeff.conversed_with.add(bob)
+        bob.conversed_with().add(alice)
+        bob.conversed_with().add(jeff)
+        alice.conversed_with().add(bob)
+        alice.conversed_with().add(jeff)
+        jeff.conversed_with().add(alice)
+        jeff.conversed_with().add(bob)
         return bob, alice, jeff
 
     # The parameters for our evaluation of the knowledge extraction.
     # We run multiple trials to obtain mean & std dev.
     no_trials = 10
-    no_observations = 1000
+    no_observations = 10000
 
     # We generate 'conversations' of a small number of messages.
     min_messages = 2
@@ -142,7 +160,7 @@ if __name__ == "__main__":
             learned_ctx = learned_people_by_name[target_ctx.name]
 
             # Sample the messages of the conversation.
-            partner = cast(Person, target_ctx.conversed_with.sample())
+            partner = cast(Person, target_ctx.conversed_with().sample())
             conversation = generate_conversation_observation(partner, random.randint(min_messages, max_messages))
             observation = Expectation("conversed_with", conversation)
             if len(example_observations) < 10:
@@ -163,16 +181,30 @@ if __name__ == "__main__":
     print()
 
     # Collate trial results.
-    print("Learned People:")
+    print("Learnt People:")
     for target in target_people:
         learned = [people[target.name] for people in trial_results]
         learned_uses_emoji = [p.uses_emoji() for p in learned]
         learned_capitalises = [p.capitalises_first_word() for p in learned]
         learned_is_positive = [p.is_positive() for p in learned]
+
+        learned_conversed_with: dict[str, list[float]] = {}
+        for p in learned:
+            for ctx, prob in p.conversed_with():
+                name = cast(Person, ctx).name
+                if name not in learned_conversed_with:
+                    learned_conversed_with[name] = []
+                learned_conversed_with[name].append(100 * prob)
+
+        conversed_with_entries = [
+            f"{np.mean(p):.1f}% ± {np.std(p):.1f}%: {n}" for n, p in learned_conversed_with.items()
+        ]
+
         print(f"- {target.name}("
               f"capitalises_first_word={np.mean(learned_capitalises):.3f} ± {np.std(learned_capitalises):.3f}, "
               f"is_positive={np.mean(learned_is_positive):.3f} ± {np.std(learned_is_positive):.3f}, "
-              f"uses_emoji={np.mean(learned_uses_emoji):.3f} ± {np.std(learned_uses_emoji):.3f})")
+              f"uses_emoji={np.mean(learned_uses_emoji):.3f} ± {np.std(learned_uses_emoji):.3f}, "
+              f"conversed_with={{" + ", ".join(conversed_with_entries) + "}}")
     print()
 
     print("Initial People that were Trained into the Learned People:")

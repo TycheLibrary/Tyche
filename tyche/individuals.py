@@ -425,8 +425,7 @@ class StatisticalConceptLearningStrategy(ConceptLearningStrategy):
     observation is made that calls this learning strategy.
     """
     def __init__(self, initial_value_weight: float = 1,
-                 *, decay_rate: float = 1, decay_rate_for_decay_rate: float = 1,
-                 initial_value: Optional[float] = None):
+                 *, decay_rate: float = 1, decay_rate_for_decay_rate: float = 1):
 
         super().__init__()
         if initial_value_weight < 0:
@@ -439,21 +438,13 @@ class StatisticalConceptLearningStrategy(ConceptLearningStrategy):
             raise TycheIndividualsException(
                 f"The decay rate of the decay rate must be greater than or equal to 0, "
                 f"not {decay_rate_for_decay_rate:.3f}")
-        if initial_value is not None and (initial_value < 0 or initial_value > 1):
-            raise TycheIndividualsException(
-                f"The initial value must fall between 0 and 1 inclusive, not {initial_value:.3f}")
 
         self.initial_value_weight = initial_value_weight
         self.decay_rate = decay_rate
         self.decay_rate_for_decay_rate = decay_rate_for_decay_rate
-        self.initial_value: Optional[float] = initial_value
-
-        if initial_value is None:
-            self.running_learning_rate_sum: float = 0.0
-            self.running_likelihood_sum: float = 0.0
-        else:
-            self.running_learning_rate_sum: float = initial_value_weight
-            self.running_likelihood_sum: float = initial_value_weight * initial_value
+        self.initial_value: Optional[float] = None
+        self.running_learning_rate_sum: float = 0.0
+        self.running_likelihood_sum: float = 0.0
 
     def init_for_new_usage(self) -> SelfType_LearningStrategy:
         """
@@ -463,8 +454,7 @@ class StatisticalConceptLearningStrategy(ConceptLearningStrategy):
         return type(self)(
             self.initial_value_weight,
             decay_rate=self.decay_rate,
-            decay_rate_for_decay_rate=self.decay_rate_for_decay_rate,
-            initial_value=self.initial_value
+            decay_rate_for_decay_rate=self.decay_rate_for_decay_rate
         )
 
     def apply(
@@ -486,15 +476,15 @@ class StatisticalConceptLearningStrategy(ConceptLearningStrategy):
         if self.initial_value is None:
             self.initial_value = concept_ref.get(individual)
             self.running_learning_rate_sum: float = self.initial_value_weight
-            self.running_likelihood_sum: float = self.initial_value_weight * self.initial_value
-
-        # Update the running totals.
-        self.running_learning_rate_sum += learning_rate
-        self.running_likelihood_sum += likelihood * learning_rate
-        if self.running_learning_rate_sum <= 0:
-            return
+            self.running_likelihood_sum: float = self.initial_value * self.initial_value_weight
+        else:
+            # Update the running totals.
+            self.running_learning_rate_sum += learning_rate
+            self.running_likelihood_sum += likelihood * learning_rate
 
         # Calculate the running mean observed value of the concept.
+        if self.running_learning_rate_sum <= 0:
+            return
         concept_ref.set(individual, self.running_likelihood_sum / self.running_learning_rate_sum)
 
     def __str__(self):
@@ -519,12 +509,112 @@ class BayesRoleLearningStrategy(RoleLearningStrategy):
         if isinstance(observation, Expectation):
             # Update the role using Bayes' rule.
             expectation = cast(Expectation, observation)
-            prev_role_value = role_ref.get(individual)
-            new_role_value = prev_role_value.apply_bayes_rule(
+            curr_role_value = role_ref.get(individual)
+            new_role_value = curr_role_value.apply_bayes_rule(
                 Given(expectation.eval_node, expectation.given_node),
                 likelihood, learning_rate * self.learning_rate
             )
             role_ref.set(individual, new_role_value)
+
+
+class StatisticalRoleLearningStrategy(RoleLearningStrategy):
+    """
+    TODO
+    """
+    def __init__(self, initial_value_weight: float = 1,
+                 *, decay_rate: float = 1, decay_rate_for_decay_rate: float = 1):
+
+        super().__init__()
+        if initial_value_weight < 0:
+            raise TycheIndividualsException(
+                f"The initial value weight must be greater than or equal to 0, not {initial_value_weight:.3f}")
+        if decay_rate < 0:
+            raise TycheIndividualsException(
+                f"The decay rate must be greater than or equal to 0, not {decay_rate:.3f}")
+        if decay_rate_for_decay_rate < 0:
+            raise TycheIndividualsException(
+                f"The decay rate of the decay rate must be greater than or equal to 0, "
+                f"not {decay_rate_for_decay_rate:.3f}")
+
+        self.initial_value_weight = initial_value_weight
+        self.decay_rate = decay_rate
+        self.decay_rate_for_decay_rate = decay_rate_for_decay_rate
+        self.initial_value: Optional[ExclusiveRoleDist] = None
+        self.running_learning_rate_sums: dict[Optional[TycheContext], float] = {}
+        self.running_likelihood_sums: dict[Optional[TycheContext], float] = {}
+
+    def init_for_new_usage(self) -> SelfType_LearningStrategy:
+        """
+        This is required so that the state of each reference that uses an instance
+        of this learning strategy is kept separate.
+        """
+        return type(self)(
+            self.initial_value_weight,
+            decay_rate=self.decay_rate,
+            decay_rate_for_decay_rate=self.decay_rate_for_decay_rate
+        )
+
+    def apply(
+            self: SelfType_LearningStrategy,
+            individual: TycheContext,
+            role_ref: RoleFunctionSymbolReference,
+            observation: ADLNode,
+            likelihood: float,
+            learning_rate: float):
+
+        # We only know how to deal with Expectation nodes here.
+        if not isinstance(observation, Expectation):
+            return
+        expectation = cast(Expectation, observation)
+
+        # Decay old observations over time.
+        for ctx in self.running_likelihood_sums.keys():
+            self.running_learning_rate_sums[ctx] *= self.decay_rate
+            self.running_likelihood_sums[ctx] *= self.decay_rate
+
+        # Decay the decay rate over time.
+        self.decay_rate = 1 - (1 - self.decay_rate) * self.decay_rate_for_decay_rate
+
+        # If we were not given an initial value on construction, read it now.
+        curr_role_value = role_ref.get(individual)
+        if self.initial_value is None:
+            self.initial_value = curr_role_value
+            for ctx, prob in curr_role_value:
+                self.running_learning_rate_sums[ctx] = self.initial_value_weight
+                self.running_likelihood_sums[ctx] = prob * self.initial_value_weight
+        else:
+            # Apply Bayes' rule to update the current value of the role.
+            bayes_role_value = curr_role_value.apply_bayes_rule(
+                Given(expectation.eval_node, expectation.given_node),
+                likelihood, 1.0
+            )
+
+            # Update the running totals.
+            for ctx, prob in bayes_role_value:
+                if ctx not in self.running_likelihood_sums:
+                    self.running_learning_rate_sums[ctx] = 0
+                    self.running_likelihood_sums[ctx] = 0
+
+                self.running_learning_rate_sums[ctx] += learning_rate
+                self.running_likelihood_sums[ctx] += prob * learning_rate
+
+        # Calculate the running mean observed value of the role.
+        new_role_value = ExclusiveRoleDist()
+        for ctx in self.running_likelihood_sums.keys():
+            ctx_learning_rate_sum = self.running_learning_rate_sums[ctx]
+            ctx_prob_sum = self.running_likelihood_sums[ctx]
+            weight = ctx_prob_sum / ctx_learning_rate_sum
+            if weight > 0:
+                new_role_value.add(ctx, weight)
+
+        if new_role_value.is_empty():
+            return
+        role_ref.set(individual, new_role_value)
+
+    def __str__(self):
+        return f"{type(self).__name__}" \
+               f"(initial_value_weight={self.initial_value_weight:.3f}, decay_rate={self.decay_rate:.3f})"
+
 
 
 class Individual(TycheContext):
