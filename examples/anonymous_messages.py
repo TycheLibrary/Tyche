@@ -204,7 +204,7 @@ if __name__ == "__main__":
               f"capitalises_first_word={np.mean(learned_capitalises):.3f} ± {np.std(learned_capitalises):.3f}, "
               f"is_positive={np.mean(learned_is_positive):.3f} ± {np.std(learned_is_positive):.3f}, "
               f"uses_emoji={np.mean(learned_uses_emoji):.3f} ± {np.std(learned_uses_emoji):.3f}, "
-              f"conversed_with={{" + ", ".join(conversed_with_entries) + "}}")
+              f"conversed_with={{" + ", ".join(conversed_with_entries) + "})")
     print()
 
     print("Initial People that were Trained into the Learned People:")
