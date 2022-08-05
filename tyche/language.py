@@ -690,21 +690,63 @@ class Conditional(ADLNode):
         args[index] = node
         return Conditional(*args)
 
-    def __str__(self):
+    def is_known_noop(self):
+        """ Returns whether this conditional does nothing. i.e., (A ? ALWAYS : NEVER). """
+        return self.if_yes == ALWAYS and self.if_no == NEVER
+
+    def is_known_complement(self):
+        """ Returns whether this conditional is a complement operation. i.e., NOT A. """
+        return self.if_yes == NEVER and self.if_no == ALWAYS
+
+    def is_known_conjunction(self):
+        """ Returns whether this conditional is a conjunction. i.e., A AND B. """
+        return self.if_yes != ALWAYS and self.if_no == NEVER
+
+    def is_known_disjunction(self):
+        """ Returns whether this conditional is a disjunction. i.e., A OR B. """
+        return self.if_yes == ALWAYS and self.if_no != NEVER
+
+    def to_str(self, *, allow_no_brackets: bool = False):
+        """
+        Converts this node to a string, and potentially
+        omits the enclosing brackets if specifically allowed.
+        """
         # Shorthand representations.
-        if self.if_yes == ALWAYS and self.if_no == NEVER:
+        if self.is_known_noop():
             return str(self.condition)
-        if self.if_yes == NEVER and self.if_no == ALWAYS:
+        if self.is_known_complement():
             return "\u00AC{}".format(str(self.condition))
-        if self.if_no == NEVER:
-            return "({} \u2227 {})".format(str(self.condition), str(self.if_yes))
-        if self.if_yes == ALWAYS:
-            return "({} \u2228 {})".format(str(self.condition), str(self.if_no))
+
+        is_conjunction = self.is_known_conjunction()
+        is_disjunction = self.is_known_disjunction()
+
+        def sub_str(node: ADLNode, no_brackets: Optional[bool] = None):
+            """ Converts the given node to a string, with some formatting parameters. """
+            if isinstance(node, Conditional):
+                sub = cast(Conditional, node)
+                if no_brackets is None:
+                    no_brackets = (is_conjunction and sub.is_known_conjunction()) or \
+                                  (is_disjunction and sub.is_known_disjunction())
+
+                return cast(Conditional, node).to_str(allow_no_brackets=no_brackets)
+            else:
+                return str(node)
+
+        brackets_format = "{}" if allow_no_brackets else "({})"
+        if is_conjunction:
+            return brackets_format.format("{} \u2227 {}").format(sub_str(self.condition), sub_str(self.if_yes))
+        if is_disjunction:
+            return brackets_format.format("{} \u2228 {}").format(sub_str(self.condition), sub_str(self.if_no))
 
         # Standard ternary.
         return "({} ? {} : {})".format(
-            str(self.condition), str(self.if_yes), str(self.if_no)
+            sub_str(self.condition, no_brackets=True),
+            sub_str(self.if_yes, no_brackets=True),
+            sub_str(self.if_no, no_brackets=True)
         )
+
+    def __str__(self):
+        return self.to_str()
 
     def __repr__(self):
         return "Conditional(condition={}, if_yes={}, if_no={})".format(
