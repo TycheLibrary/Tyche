@@ -8,9 +8,11 @@ we can learn that Bob uses emojis often, without knowing what messages
 Bob sent. This is achieved through the use of the observation learning
 mechanisms of the individuals module of Tyche.
 
-The Jupyter notebook with the same name as this file in this directory
-also provides a commentary and more structure to about what this code
-is doing and its results.
+The Jupyter notebook anonymous_messages.ipynb in this directory
+also provides similar functionality, but with additional description
+and analysis. It is also simpler than this example, which may be easier
+to follow. This example is used to test extending the example from
+the notebook with role learning.
 """
 from tyche.individuals import *
 from tyche.language import *
@@ -24,7 +26,7 @@ decaying_concept_learning_strat = StatisticalConceptLearningStrategy(
     decay_rate=0.95, decay_rate_for_decay_rate=0.95
 )
 decaying_role_learning_strat = StatisticalRoleLearningStrategy(
-    decay_rate=0.75, decay_rate_for_decay_rate=0.99
+    decay_rate=0.85, decay_rate_for_decay_rate=0.9995
 )
 
 
@@ -32,9 +34,6 @@ class Person(Individual):
     """
     An example person that has a set of preferences when writing messages.
     """
-    name: str
-    _conversed_with: TycheRoleValue
-
     def __init__(
             self, name: str,
             uses_emoji: TycheConceptValue = 0.5,
@@ -96,10 +95,8 @@ if __name__ == "__main__":
 
     target_bob.conversed_with().add(target_alice, 1.5)
     target_bob.conversed_with().add(target_jeff, 1)
-
     target_alice.conversed_with().add(target_bob, 1)
     target_alice.conversed_with().add(target_jeff, 3)
-
     target_jeff.conversed_with().add(target_alice, 3)
     target_jeff.conversed_with().add(target_bob, 1.5)
 
@@ -121,7 +118,8 @@ if __name__ == "__main__":
     # The parameters for our evaluation of the knowledge extraction.
     # We run multiple trials to obtain mean & std dev.
     no_trials = 10
-    no_observations = 10000
+    no_observations = 5_000
+    repetitions = 2
 
     # We generate 'conversations' of a small number of messages.
     min_messages = 2
@@ -129,6 +127,7 @@ if __name__ == "__main__":
     c_uses_emoji = Concept("uses_emoji")
     c_capitalises_first_word = Concept("capitalises_first_word")
     c_is_positive = Concept("is_positive")
+    r_conversed_with = Role("conversed_with")
 
     def generate_conversation_observation(person: Person, message_count: int) -> ADLNode:
         # Sample the properties of random messages.
@@ -143,10 +142,13 @@ if __name__ == "__main__":
         # Combine the messages into one observation.
         return functools.reduce(lambda a, b: a & b, messages)
 
-    print(f"Running with {no_trials} trials, {no_observations} observations, "
-          f"and conversations of {min_messages} to {max_messages} messages")
+    print(
+        f"Running with {no_trials} trials, {no_observations} observations per trial, "
+        f"{repetitions} repetitions of those observations, "
+        f"and conversations of {min_messages} to {max_messages} messages"
+    )
     trial_results = []
-    example_observations = []
+    example_observations = None
     for trial_no in range(no_trials):
         print(f".. running trial {trial_no + 1}")
 
@@ -154,21 +156,31 @@ if __name__ == "__main__":
         learned_people_by_name: dict[str, Person] = {person.name: person for person in learned_people}
 
         # Generate random indirect observations about Bob, Alice, and Jeff.
-        for _ in range(no_observations):
-            # The context person is the person that we observed having a conversation with someone.
-            target_ctx = target_people[random.randint(0, len(target_people) - 1)]
-            learned_ctx = learned_people_by_name[target_ctx.name]
+        observations: list[tuple[Person, ADLNode]] = []
+        for index, gt_person in enumerate(target_people):
+            learn_person = learned_people_by_name[gt_person.name]
 
-            # Sample the messages of the conversation.
-            partner = cast(Person, target_ctx.conversed_with().sample())
-            conversation = generate_conversation_observation(partner, random.randint(min_messages, max_messages))
-            observation = Expectation("conversed_with", conversation)
-            if len(example_observations) < 10:
-                example_observations.append(f"Observe at {target_ctx.name}: {str(observation)}")
+            # Evenly distribute the observations between each person.
+            from_no = round(index * no_observations / len(learned_people))
+            to_no = round((index + 1) * no_observations / len(learned_people))
+            for _ in range(from_no, to_no):
+                gt_partner = cast(Person, gt_person.conversed_with().sample())
+                conversation = generate_conversation_observation(
+                    gt_partner, random.randint(min_messages, max_messages)
+                )
+                observations.append((learn_person, Expectation(r_conversed_with, conversation)))
 
-            # Apply the observation to the learned ctx person.
-            learned_ctx.observe(observation)
+        random.shuffle(observations)
+        if example_observations is None:
+            example_observations = [f"Observe at {p.name}: {str(o)}" for p, o in observations[0:4]]
 
+        # Observe the generated observations in the model.
+        for _ in range(repetitions):
+            random.shuffle(observations)
+            for person, obs in observations:
+                person.observe(obs)
+
+        # Record the results.
         trial_results.append(learned_people_by_name)
 
     print()
@@ -176,7 +188,7 @@ if __name__ == "__main__":
     print("- " + "\n- ".join(str(obs) for obs in example_observations))
     print()
 
-    print("Target People:")
+    print("Ground-Truth People:")
     print("- " + "\n- ".join(str(p) for p in target_people))
     print()
 
