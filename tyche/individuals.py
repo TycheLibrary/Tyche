@@ -737,7 +737,7 @@ class Individual(TycheContext):
 
     def to_str(self, *, detail_lvl: int = 1, indent_lvl: int = 0):
         if detail_lvl <= 0:
-            return self.name
+            return self.name if self.name is not None else f"<{type(self).__name__}>"
 
         sub_detail_lvl = detail_lvl - 1
 
