@@ -4,7 +4,7 @@ This file contains the virus transmission example from the paper
 Tim French and Thomas Smoker.
 """
 from tyche.individuals import Individual, TycheConceptField, IdentityIndividual, role, \
-    BayesRoleLearningStrategy
+    BayesRuleLearningStrategy
 from tyche.language import Concept, ADLNode, ExclusiveRoleDist, Expectation
 from tyche.probability import TycheProbabilityException
 
@@ -28,7 +28,7 @@ class VirusTransmissionIndividual(Individual):
     def contact(self):
         return self._contact
 
-    @contact.learning_func(BayesRoleLearningStrategy())
+    @contact.learning_func(BayesRuleLearningStrategy())
     def set_contact(self, dist: ExclusiveRoleDist):
         self._contact = dist
 

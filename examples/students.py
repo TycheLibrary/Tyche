@@ -55,7 +55,7 @@ class Student(Person):
     def supervisor(self):
         return self._supervisor
 
-    @supervisor.learning_func(BayesRoleLearningStrategy())
+    @supervisor.learning_func(BayesRuleLearningStrategy())
     def set_supervisor(self, dist: ExclusiveRoleDist):
         self._supervisor = dist
 

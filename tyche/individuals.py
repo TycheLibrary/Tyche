@@ -492,8 +492,10 @@ class StatisticalConceptLearningStrategy(ConceptLearningStrategy):
                f"(initial_value_weight={self.initial_value_weight:.3f}, decay_rate={self.decay_rate:.3f})"
 
 
-class BayesRoleLearningStrategy(RoleLearningStrategy):
-    """  """
+class BayesRuleLearningStrategy(RoleLearningStrategy):
+    """
+    TODO
+    """
     def __init__(self, learning_rate: float = 1.0):
         super().__init__()
         self.learning_rate = learning_rate
@@ -866,7 +868,7 @@ class IdentityIndividual(TycheContext):
             id_role_value: Optional[ExclusiveRoleDist] = None, *,
             name: Optional[str] = None,
             entries: RoleDistributionEntries = None,
-            learning_strat: Optional[RoleLearningStrategy] = BayesRoleLearningStrategy()):
+            learning_strat: Optional[RoleLearningStrategy] = BayesRuleLearningStrategy()):
 
         super().__init__()
         self.name = name
