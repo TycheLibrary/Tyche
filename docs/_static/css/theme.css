@@ -4,6 +4,6 @@
     padding-top: 1em;
 }
 
-.method, .function {
+.method, .function, .property {
     padding-top: 2em;
 }
