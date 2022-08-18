@@ -1,0 +1,34 @@
+name: Build Sphinx Documentation for GitHub Pages
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip' # caching pip dependencies
+      - name: Install dependencies
+        run: pip install -r docs/requirements.txt
+      
+      - name: Build the website
+        working-directory: ./docs
+        run: make clean html
+      
+      - name: Transfer docs to tychelibrary.github.io
+        uses: cpina/github-action-push-to-another-repository@v1.5
+        env:
+          SSH_DEPLOY_KEY: ${{ secrets.SSH_DEPLOY_KEY }}
+        with:
+          source-directory: docs-build/html/
+          destination-github-username: TycheLibrary
+          destination-repository-name: tychelibrary.github.io
+          user-email: padraiglamont@gmail.com
+          target-branch: main
