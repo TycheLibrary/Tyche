@@ -38,3 +38,4 @@ sys.path.insert(0, os.path.abspath('..'))
 html_theme = 'alabaster'
 html_static_path = ['_static']
 html_logo = 'logo.png'
+html_favicon = 'favicon.ico'
