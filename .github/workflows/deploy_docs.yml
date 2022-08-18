@@ -24,10 +24,9 @@ jobs:
         run: pip install -r docs/requirements.txt
 
       # Build the website.
-      - run: cd docs/
       - name: Build the website
+        working-directory: ./docs
         run: make clean html
-      - run: cd ..
       
       # Create a GitHub Pages artifact to deploy.
       - name: Upload GitHub Pages artifact
