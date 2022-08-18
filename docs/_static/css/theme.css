@@ -1,0 +1,9 @@
+.class, .exception {
+    border-bottom: 3px solid #d0d0d0;
+    padding-bottom: 1em;
+    padding-top: 1em;
+}
+
+.method, .function {
+    padding-top: 2em;
+}

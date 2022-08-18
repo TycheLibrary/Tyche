@@ -3,13 +3,14 @@ This module contains the definitions of probability distributions
 that can be easily manipulated for use alongside Tyche's other
 functionality.
 """
+from __future__ import annotations
+
 import math
 from typing import Union
 
 import numpy as np
 from scipy import stats
 from numpy.typing import ArrayLike
-
 
 ProbDistLike: type = Union[float, int, 'ProbabilityDistribution']
 
