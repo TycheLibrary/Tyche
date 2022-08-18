@@ -3,19 +3,11 @@ Welcome to Tyche's documentation!
 
 Tyche is a Python library to support the representation of, and the reasoning about, aleatoric information.
 Aleatoric information is information that has an independent probability of being true each time it is observed
-(i.e., each observation is a roll of the dice). For example, every text message that people send _may_ include
-emojis, with a different probability for each individual that sent the message. Tyche provides functionality to
-reason about this aleatoric information using aleatoric description logic. This allows the probability of truth
+(i.e., each observation is treated as a roll of the dice). For example, every text message that people send _may_
+include emojis, with a different probability for each individual that sent the message. Tyche provides functionality
+to reason about this aleatoric information using aleatoric description logic. This allows the probability of truth
 of logical statements to be efficiently queried, and allows the probability of the tendencies of individuals to
 be learnt through observation.
-
-Tyche provides its main functionality through its `tyche.individuals` module, which facilitates the
-construction of ontological knowledge bases with probabilistic beliefs. This allows the simple
-representation of individuals, the probabilistic beliefs about them (termed concepts), and the
-probabilistic relationships between them (termed roles). Aleatoric description logic sentences
-may then be constructed using the `tyche.language` model to be used to query a knowledge base
-for a probability, or to be used as an observation to update a knowledge base. This allows
-fine-grained modelling of probabilistic belief systems, with a rigorous mathematical foundation.
 
 **GitHub:** `github.com/TycheLibrary/Tyche
 <https://github.com/TycheLibrary/Tyche>`_
@@ -38,7 +30,6 @@ Table of Contents
 
 .. toctree::
    :maxdepth: 2
-   :caption: Modules:
 
    language
    individuals
@@ -51,6 +42,6 @@ Table of Contents
 Indices and tables
 #################
 
-* :ref:`genindex`
-* :ref:`modindex`
-* :ref:`search`
+- :ref:`genindex`
+- :ref:`modindex`
+- :ref:`search`
