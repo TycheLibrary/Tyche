@@ -18,6 +18,8 @@ may then be constructed using the `tyche.language` model to be used to query a k
 for a probability, or to be used as an observation to update a knowledge base. This allows
 fine-grained modelling of probabilistic belief systems, with a rigorous mathematical foundation.
 
+**Documentation:** [tychelibrary.github.io](https://tychelibrary.github.io)
+
 **Related Publications:**
 - "Aleatoric Description Logic for Probabilistic Reasoning" by
   Tim French and Thomas Smoker (2021): [arXiv link](https://arxiv.org/abs/2108.13036)
