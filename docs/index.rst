@@ -1,4 +1,4 @@
-Welcome to Tyche's documentation!
+Tyche Documentation
 =================================
 
 Tyche is a Python library to support the representation of, and the reasoning about, aleatoric information.
