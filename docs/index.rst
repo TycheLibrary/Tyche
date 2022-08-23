@@ -10,24 +10,27 @@ of logical statements to be efficiently queried, and allows the probability of t
 be learnt through observation.
 
 **GitHub:** `github.com/TycheLibrary/Tyche
-<https://github.com/TycheLibrary/Tyche>`_
+<https://github.com/TycheLibrary/Tyche>`__
 
 
-**Tyche Pre-Print:** `arXiv link <https://arxiv.org/abs/2208.09838>`_
+**Tyche Paper:**
+
+- "Tyche: A library for probabilistic reasoning and belief modelling in Python"
+  by Padraig Lamont (2022): `arXiv link <https://arxiv.org/abs/2208.09838>`_
 
 
 **Related Publications:**
 
 - "Aleatoric Description Logic for Probabilistic Reasoning" by
   Tim French and Thomas Smoker (2021):
-  `arXiv link <https://arxiv.org/abs/2108.13036>`_
+  `arXiv link <https://arxiv.org/abs/2108.13036>`__
 - "A modal aleatoric calculus for probabilistic reasoning" by
   Tim French, Andrew Gozzard and Mark Reynolds (2018):
-  `arXiv link <https://arxiv.org/abs/1812.11741>`_
+  `arXiv link <https://arxiv.org/abs/1812.11741>`__
 
 
 Table of Contents
-#################
+##################
 
 .. toctree::
    :maxdepth: 2
@@ -41,7 +44,7 @@ Table of Contents
 
 
 Indices and tables
-#################
+###################
 
 - :ref:`genindex`
 - :ref:`modindex`
