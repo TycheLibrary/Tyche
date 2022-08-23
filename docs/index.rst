@@ -12,6 +12,10 @@ be learnt through observation.
 **GitHub:** `github.com/TycheLibrary/Tyche
 <https://github.com/TycheLibrary/Tyche>`_
 
+
+**Tyche Pre-Print:** `arXiv link <https://arxiv.org/abs/2208.09838>`_
+
+
 **Related Publications:**
 
 - "Aleatoric Description Logic for Probabilistic Reasoning" by

@@ -20,6 +20,8 @@ fine-grained modelling of probabilistic belief systems, with a rigorous mathemat
 
 **Documentation:** [tychelibrary.github.io](https://tychelibrary.github.io)
 
+**Tyche Pre-Print:** [arXiv link](https://arxiv.org/abs/2208.09838)
+
 **Related Publications:**
 - "Aleatoric Description Logic for Probabilistic Reasoning" by
   Tim French and Thomas Smoker (2021): [arXiv link](https://arxiv.org/abs/2108.13036)
