@@ -18,17 +18,23 @@ release = 'v1.0.0'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ['sphinx.ext.autodoc', 'sphinx.ext.coverage', 'sphinx.ext.napoleon']
+extensions = ['autoapi.extension', 'sphinx.ext.coverage', 'sphinx.ext.napoleon']
 
 templates_path = ['_templates']
 exclude_patterns = []
+
+sys.path.insert(0, os.path.abspath('..'))
 autodoc_typehints = "description"
 autodoc_type_aliases = {
     'Iterable': 'Iterable',
     'ArrayLike': 'ArrayLike'
 }
 
-sys.path.insert(0, os.path.abspath('..'))
+autoapi_type = 'python'
+autoapi_dirs = ['../tyche']
+autoapi_template_dir = '_templates'
+autoapi_generate_api_docs = False
+autoapi_root = "tyche"
 
 
 
