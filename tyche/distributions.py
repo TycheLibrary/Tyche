@@ -1,7 +1,24 @@
 """
-This module contains the definitions of probability distributions
-that can be easily manipulated for use alongside Tyche's other
-functionality.
+This module contains several classes of probability distributions
+that can be easily manipulated (e.g., shift, scale, or add to
+distributions to get new distributions).
+
+Example::
+
+    person_height_cm = NormalDist(mean=180, std_dev=5)
+    heel_height_cm = NormalDist(mean=5, std_dev=3)
+
+    total_height_cm = person_height_cm + heel_height_cm
+    total_height_ft = total_height_cm * 0.0328084
+
+    hoop_height_ft = 10
+    distance_to_hoop_ft = hoop_height_ft - total_height_ft
+
+    # Result: distance_to_hoop_ft = Normal(mean=3.930, std_dev=0.191)
+
+This aims to allow the more flexible and intuitive use of probability
+distributions, by reducing the amount of manual math that is required
+to manipulate and use them.
 """
 from __future__ import annotations
 
@@ -369,7 +386,7 @@ class UniformDist(ContinuousProbDist):
         return stats.uniform.ppf(prob, loc=self._minimum, scale=self._maximum - self._minimum)
 
     def __str__(self):
-        return "Uniform({}, {})".format(self._minimum, self._maximum)
+        return "Uniform({:.3f} to {:.3f})".format(self._minimum, self._maximum)
 
     def __repr__(self):
         return "UniformDist(min={}, max={})".format(self._minimum, self._maximum)
@@ -425,7 +442,7 @@ class NormalDist(ContinuousProbDist):
         return stats.norm.ppf(prob, loc=self._mean, scale=self._std_dev)
 
     def __str__(self):
-        return "Normal({}, {})".format(self._mean, self._std_dev)
+        return "Normal(mean={:.3f}, std_dev={:.3f})".format(self._mean, self._std_dev)
 
     def __repr__(self):
         return "NormalDist(mean={}, std_dev={})".format(self._mean, self._std_dev)

@@ -11,6 +11,19 @@ class TestDistributions(unittest.TestCase):
     def tearDown(self):
         pass
 
+    def test_docs_example(self):
+        """
+        Tests the example given in the distributions documentation.
+        """
+        person_height_cm = NormalDist(mean=180, std_dev=5)
+        heel_height_cm = NormalDist(mean=5, std_dev=3)
+        total_height_cm = person_height_cm + heel_height_cm
+        total_height_ft = total_height_cm * 0.0328084
+
+        hoop_height_ft = 10
+        distance_to_hoop_ft = hoop_height_ft - total_height_ft
+        self.assertEqual("Normal(mean=3.930, std_dev=0.191)", str(distance_to_hoop_ft))
+
     def test_uniform(self):
         """
         Tests UniformDist.
