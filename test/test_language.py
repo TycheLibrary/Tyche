@@ -59,7 +59,7 @@ class TestLanguage(unittest.TestCase):
         self.assertEqual("\u00ACabc", str(abc.complement()))
         self.assertEqual("(a \u2227 b)", str(a & b))
         self.assertEqual("(b \u2228 a)", str(b | a))
-        self.assertEqual("((a \u2228 abc) \u2227 (b \u2227 \u00ACa))", str((a | abc) & (b & a.complement())))
+        self.assertEqual("((a \u2228 abc) \u2227 b \u2227 \u00ACa)", str((a | abc) & (b & a.complement())))
         self.assertEqual("[x](abc)", str(Expectation("x", abc)))
         self.assertEqual("Exists[x]", str(Exists("x")))
 

@@ -32,6 +32,23 @@ class TestDistributions(unittest.TestCase):
         for x in np.linspace(1, 10, num=25):
             self.assertAlmostEqual(dist.cdf(-x), 1.0 - dist.cdf(x))
 
+    def test_add_normals(self):
+        """
+        Tests the addition of NormalDists.
+        """
+        test_cases = [
+            ((0, 1), (0, 1), (0, 2**0.5)),
+            ((-1, 2**0.5), (1, 2**0.5), (0, 2)),
+            ((-100, 2), (0, 12**0.5), (-100, 4)),
+            ((80, 8), (40, 192**0.5), (120, 16))
+        ]
+        for (m1, s1), (m2, s2), (mr, sr) in test_cases:
+            dist1 = NormalDist(m1, s1)
+            dist2 = NormalDist(m2, s2)
+            dist_res = dist1 + dist2
+            self.assertAlmostEqual(mr, dist_res.mean())
+            self.assertAlmostEqual(sr, dist_res.std_dev())
+
     def test_truncate_normal(self):
         """
         Tests truncating NormalDist.

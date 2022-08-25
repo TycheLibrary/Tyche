@@ -6,13 +6,14 @@ functionality.
 from __future__ import annotations
 
 import math
-from typing import Union
+import typing
+from typing import Union, Optional
 
 import numpy as np
 from scipy import stats
 from numpy.typing import ArrayLike
 
-ProbDistLike: type = Union[float, int, 'ProbabilityDistribution']
+ProbDistLike: type = Union[float, int, 'ProbDist']
 
 
 class TycheDistributionsException(Exception):
@@ -37,7 +38,7 @@ class ProbDist:
 
 class ContinuousProbDist(ProbDist):
     """
-    Allows the representation of continuous probability distributions.
+    Represents a continuous probability distribution.
     """
     def __init__(self):
         super().__init__()
@@ -86,15 +87,36 @@ class ContinuousProbDist(ProbDist):
         """
         raise NotImplementedError("inverse_cdf is unimplemented for " + type(self).__name__)
 
+    def _try_add_to_distribution(self, other: ContinuousProbDist) -> Optional['ContinuousProbDist']:
+        """
+        Attempts to add this continuous probability distribution to the other continuous
+        probability distribution. If this is not supported, then None should be returned.
+        """
+        return None
+
     def __add__(self, other: ProbDistLike) -> 'ContinuousProbDist':
         """
         Adds the other scalar or probability distribution to this probability distribution.
+        Sampling values from the resulting continuous probability distribution is equivalent
+        to sampling values from this and the other probability distributions, and then
+        adding them.
         """
         # Scalar additions such as UniformDist(0, 1) < 0.1
         if np.isscalar(other):
             return self._shift(float(other))
 
-        # Distribution additions such as UniformDist(0, 1) + UniformDist(0.5, 1)
+        if not isinstance(other, ContinuousProbDist):
+            raise NotImplementedError(
+                f"Unable to add values of type {type(other)} to continuous probability distributions")
+
+        result = self._try_add_to_distribution(other)
+        if result is not None:
+            return result
+
+        result = other._try_add_to_distribution(self)
+        if result is not None:
+            return result
+
         """
         I would love for this to 'just work', but unfortunately this requires the
         convolution of the PDFs of the two distributions. These convolutions
@@ -108,7 +130,8 @@ class ContinuousProbDist(ProbDist):
         probability distributions, but it is not exact. Therefore, I think it should be
         more explicitly chosen than overloading +.
         """
-        raise NotImplementedError("Addition of distributions is not yet implemented")
+        raise NotImplementedError(
+            f"Addition of distributions of type {type(self)} and {type(other)} is not yet supported")
 
     def __radd__(self, other: ProbDistLike) -> 'ContinuousProbDist':
         return self + other  # Add is commutative
@@ -375,6 +398,16 @@ class NormalDist(ContinuousProbDist):
             self._mean * scale,
             abs(self._std_dev * scale)  # Normal distributions are symmetrical
         )
+
+    def _try_add_to_distribution(self, other: ContinuousProbDist) -> Optional[ContinuousProbDist]:
+        # Allow addition of normal distributions to themselves.
+        if type(other) == NormalDist:
+            other_norm = typing.cast(NormalDist, other)
+            new_mean = self._mean + other_norm._mean
+            new_std_dev = (self._std_dev**2 + other_norm._std_dev**2)**0.5
+            return NormalDist(new_mean, new_std_dev)
+
+        return None
 
     def cdf(self, x: ArrayLike) -> ArrayLike:
         return stats.norm.cdf(x, loc=self._mean, scale=self._std_dev)
