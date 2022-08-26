@@ -17,7 +17,7 @@ Example::
     # Result: distance_to_hoop_ft = Normal(mean=3.930, std_dev=0.191)
 
 This aims to allow the more flexible and intuitive use of probability
-distributions, by reducing the amount of manual math that is required
+distributions, by reducing the amount of manual work that is required
 to manipulate and use them.
 """
 from __future__ import annotations
@@ -35,7 +35,8 @@ ProbDistLike: type = Union[float, int, 'ProbDist']
 
 class TycheDistributionsException(Exception):
     """
-    Class for detailing exceptions with distributions.
+    An exception type that is thrown when errors occur in
+    the construction or use of probability distributions.
     """
     def __init__(self, message: str):
         self.message = "TycheDistributionsException: " + message
@@ -43,13 +44,24 @@ class TycheDistributionsException(Exception):
 
 class ProbDist:
     """
-    Allows the representation of a probability distribution in Tyche.
+    A probability distribution over a continuous or discrete space of numeric values.
     """
     def __init__(self):
         pass
 
     def sample(self, rng: np.random.Generator, shape: Union[int, tuple, None] = None) -> ArrayLike:
-        """ Samples size random values from this distribution. """
+        """
+        Samples random values from this distribution.
+
+        Parameters:
+            rng: A NumPy random number generator that is used to generate random samples
+              from this distribution.
+            shape: Configures the format of the returned samples from this probability
+              distribution. By default, a single sampled value is returned. If an int
+              is provided, then a NumPy array of `shape` values will be returned. If a
+              tuple is provided, then a NumPy array of sampled values will be returned
+              with the tuple used as the array's shape.
+        """
         raise NotImplementedError("sample is unimplemented for " + type(self).__name__)
 
 

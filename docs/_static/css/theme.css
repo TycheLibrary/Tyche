@@ -40,8 +40,8 @@ div.sphinxsidebar ul li.toctree-l2 {
     font-size: 0.9em;
 }
 img.logo {
-    width: 180px;
-    height: 180px;
+    width: 160px;
+    height: auto;
 }
 div.sphinxsidebarwrapper p.logo {
     text-align: left;
@@ -96,9 +96,6 @@ dl.property > dt {
 
 
 /* Padding between elements within classes. */
-.method, .property {
-    padding-top: 2em;
-}
 .class, .exception, .function {
     padding-bottom: 2em;
 }
@@ -115,4 +112,21 @@ dl > dt > .property {
 dl > dt > .descname span {
     color: #222222;
     font-size: 1.1em;
+}
+
+
+/* Styling of the description of classes, methods, and functions. */
+dl.field-list > dt {
+    color: #444444;
+    padding-left: 0;
+}
+dl.field-list > dd {
+    font-size: 0.9em;
+}
+dl.field-list > dt,
+dl.field-list > dd {
+    padding-bottom: 0.4em;
+}
+dl.field-list > dd > ul > li {
+    padding-bottom: 0.4em;
 }
