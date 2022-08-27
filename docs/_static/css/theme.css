@@ -1,15 +1,22 @@
 
 /* We want most links to be blue. */
 a.reference,
-div.sphinxsidebar a {
+div.sphinxsidebar a,
+a code.xref .pre {
     color: #5664bf;
     border-bottom: none;
 }
 a.reference:hover,
-div.sphinxsidebar a:hover {
+div.sphinxsidebar a:hover,
+a:hover code.xref .pre {
     color: #3d4787;
     border-bottom: none;
     text-decoration: underline;
+}
+
+code.xref,
+code.xref:hover {
+    background: none;
 }
 
 /* We don't want the 'Tyche' name to be blue. */
@@ -71,18 +78,20 @@ body > div.document > div.bodywrapper {
 /* Puts a blue box below class names, to make them stand out. */
 dl.class > dt,
 dl.exception > dt,
+dl.data > dt,
 dl.function > dt,
 dl.method > dt,
 dl.property > dt {
     display: table;
     margin: 0.6em 0;
     padding: 0.6em;
-    font-size: 0.8em;
+    font-size: 0.86em;
     position: relative;
 }
 
 dl.class > dt,
 dl.exception > dt,
+dl.data > dt,
 dl.function > dt {
     background-color: #f3f4f7;
     border-top: 3px solid #6878de;
@@ -91,12 +100,12 @@ dl.function > dt {
 dl.method > dt,
 dl.property > dt {
     background-color: #f9f9fb;
-    border-top: 3px solid #b4bcee;
+    border-left: 3px solid #b4bcee;
 }
 
 
 /* Padding between elements within classes. */
-.class, .exception, .function {
+.class, .exception, .data, .function {
     padding-bottom: 2em;
 }
 

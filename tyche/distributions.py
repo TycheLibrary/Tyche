@@ -81,10 +81,7 @@ class ContinuousProbDist(ProbDist):
     def _scale(self, scale: float) -> 'ContinuousProbDist':
         return LinearTransformContinuousProbDist(self, 0, scale)
 
-    def sample(self, rng: np.random.Generator, shape: Union[int, tuple, None] = None) -> float:
-        """
-        Samples a random value from this distribution.
-        """
+    def sample(self, rng: np.random.Generator, shape: Union[int, tuple, None] = None) -> ArrayLike:
         # We use nextafter so that we can include the end-point 1 in the generated numbers.
         prob = rng.uniform(0, np.nextafter(1.0, 1), shape)
         return self.inverse_cdf(prob)
