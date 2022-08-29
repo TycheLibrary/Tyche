@@ -18,7 +18,7 @@ release = 'v1.0.0'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ['sphinx.ext.autodoc', 'autoapi.extension']
+extensions = ['sphinx.ext.autodoc', 'autoapi.extension', 'sphinx.ext.napoleon']
 
 templates_path = ['_templates']
 exclude_patterns = []
@@ -30,6 +30,7 @@ autodoc_type_aliases = {
     'Iterable': 'Iterable',
     'ArrayLike': 'ArrayLike'
 }
+autoclass_content = 'both'
 
 autoapi_type = 'python'
 autoapi_options = ['show-inheritance']

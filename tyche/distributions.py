@@ -16,6 +16,11 @@ Example::
 
     # Result: distance_to_hoop_ft = Normal(mean=3.930, std_dev=0.191)
 
+The following probability distributions are currently available:
+
+- `UniformDist <#tyche.distributions.UniformDist>`_: A uniform probability distribution.
+- `NormalDist <#tyche.distributions.NormalDist>`_: A normal probability distribution.
+
 This aims to allow the more flexible and intuitive use of probability
 distributions, by reducing the amount of manual work that is required
 to manipulate and use them.
@@ -39,12 +44,17 @@ class TycheDistributionsException(Exception):
     the construction or use of probability distributions.
     """
     def __init__(self, message: str):
+        """
+        Parameters:
+            message: A message describing the reason that this
+              exception was raised.
+        """
         self.message = "TycheDistributionsException: " + message
 
 
 class ProbDist:
     """
-    A probability distribution over a continuous or discrete space of numeric values.
+    A probability distribution over a space of numeric values.
     """
     def __init__(self):
         pass
@@ -67,49 +77,115 @@ class ProbDist:
 
 class ContinuousProbDist(ProbDist):
     """
-    Represents a continuous probability distribution.
+    A probability distribution over a continuous space of numeric values.
     """
     def __init__(self):
         super().__init__()
 
     def truncate(self, minimum: float, maximum: float) -> 'ContinuousProbDist':
+        """
+        Returns a new distribution that represents the truncation of
+        this distribution to the range [minimum, maximum].
+
+        Parameters:
+            minimum: A lower limit on the numeric values in this distribution
+              after truncation.
+            maximum: An upper limit on the numeric values in this distribution
+              after truncation.
+        """
         return TruncateContinuousProbDist(self, minimum, maximum)
 
     def _shift(self, shift: float) -> 'ContinuousProbDist':
+        """
+        Returns a new distribution that represents a shift of this
+        distribution by `shift`.
+
+        Parameters:
+            shift: The numerical amount to shift the values in this
+              distribution by.
+        """
         return LinearTransformContinuousProbDist(self, shift, 1)
 
     def _scale(self, scale: float) -> 'ContinuousProbDist':
+        """
+        Returns a new distribution that represents a scale of this
+        distribution by `scale`.
+
+        Parameters:
+            scale: The numerical amount to multiply the values in this
+              distribution by.
+        """
         return LinearTransformContinuousProbDist(self, 0, scale)
 
     def sample(self, rng: np.random.Generator, shape: Union[int, tuple, None] = None) -> ArrayLike:
-        # We use nextafter so that we can include the end-point 1 in the generated numbers.
+        # We use nextafter so that we can include the
+        # end-point (1) in the generated numbers.
         prob = rng.uniform(0, np.nextafter(1.0, 1), shape)
         return self.inverse_cdf(prob)
 
     def cdf(self, x: ArrayLike) -> ArrayLike:
-        """ Evaluates the cumulative density function at x. """
+        """
+        Evaluates the cumulative density function of this distribution
+        at `x`. The resulting value should fall in the range [0, 1],
+        although numerical error can cause slightly lower or higher
+        values to be returned.
+
+        Parameters:
+            x: The point or points at which to evaluate the cumulative density
+              function of this distribution. If a numerical value is provided,
+              a numerical value is returned. If a NumPy array of values is
+              provided, then a NumPy array of values will be returned that
+              matches the shape of `x`.
+        """
         raise NotImplementedError("cdf is unimplemented for " + type(self).__name__)
 
     def mean(self) -> float:
-        """ Evaluates the mean of this distribution. """
+        """
+        Evaluates to the mean value of this distribution.
+        """
         return self.inverse_cdf(0.5)
 
     def variance(self) -> float:
-        """ Evaluates the variance of this distribution. """
+        """
+        Evaluates to the variance of this distribution.
+        """
         raise NotImplementedError("variance is unimplemented for " + type(self).__name__)
 
     def std_dev(self) -> float:
-        """ Evaluates the standard deviation of this distribution. """
+        """
+        Evaluates to the standard deviation of this distribution.
+        """
         return math.sqrt(self.variance())
 
     def pdf(self, x: ArrayLike) -> ArrayLike:
-        """ Evaluates the probability density function at x. """
+        """
+        Evaluates the probability density function of this distribution
+        at `x`. The resulting value should fall in the range [0, 1],
+        although numerical error can cause slightly lower or higher
+        values to be returned.
+
+        Parameters:
+            x: The point or points at which to evaluate the probability density
+              function of this distribution. If a numerical value is provided,
+              a numerical value is returned. If a NumPy array of values is
+              provided, then a NumPy array of values will be returned that
+              matches the shape of `x`.
+        """
         raise NotImplementedError("pdf is unimplemented for " + type(self).__name__)
 
     def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
         """
-        Calculates the x-value that would produce the given probability using
-        the cumulative density function of this probability distribution.
+        Evaluates the inverse cumulative density function of this distribution
+        at `prob`. This involves calculating the value in this distribution
+        that would produce the given probability, `prob`, if it was used to
+        evaluate the cumulative density function of this distribution.
+
+        Parameters:
+            prob: The point or points at which to evaluate the inverse cumulative
+              density function of this distribution. If a numerical value is
+              provided, a numerical value is returned. If a NumPy array of values
+              is provided, then a NumPy array of values will be returned that
+              matches the shape of `prob`.
         """
         raise NotImplementedError("inverse_cdf is unimplemented for " + type(self).__name__)
 
@@ -239,8 +315,19 @@ class ContinuousProbDist(ProbDist):
 
 
 class LinearTransformContinuousProbDist(ContinuousProbDist):
-    """ Applies a linear transformation to a ContinuousProbDist. """
+    """
+    Applies a linear transformation (scale + shift) to a ContinuousProbDist.
+    The scaling of values is performed before the shift of values.
+    """
     def __init__(self, dist: ContinuousProbDist, shift: float, scale: float):
+        """
+        Parameters:
+            dist: A delegate continuous probability distribution to scale and shift.
+            shift: A shift to be applied to the delegate distribution, `dist`, after
+              the scale is applied.
+            scale: A scale to be applied to the delegate distribution, `dist`, before
+              the shift is applied.
+        """
         super().__init__()
         if scale == 0:
             raise TycheDistributionsException("The scale must be non-zero")
@@ -300,8 +387,17 @@ class LinearTransformContinuousProbDist(ContinuousProbDist):
 
 
 class TruncateContinuousProbDist(ContinuousProbDist):
-    """ Truncates a ContinuousProbDist. """
+    """
+    Applies a truncation to a ContinuousProbDist. All values below `minimum`
+    and above `maximum` are discarded.
+    """
     def __init__(self, dist: ContinuousProbDist, minimum: float, maximum: float):
+        """
+        Parameters:
+            dist: A delegate continuous probability distribution to truncate.
+            minimum: The lower bound to use to truncate the delegate distribution.
+            maximum: The upper bound to use to truncate the delegate distribution.
+        """
         super().__init__()
         if maximum <= minimum:
             raise TycheDistributionsException("TruncatedNormalDist maximum must be > than minimum. {} <= {}".format(
@@ -359,9 +455,17 @@ class TruncateContinuousProbDist(ContinuousProbDist):
 
 class UniformDist(ContinuousProbDist):
     """
-    A uniform probability distribution.
+    A uniform probability distribution over the range [minimum, maximum].
+    All values within this range have equal probability of being sampled.
     """
     def __init__(self, minimum: float, maximum: float):
+        """
+        Parameters:
+            minimum: The lower bound on values that could be sampled from this
+              uniform probability distribution.
+            maximum: The upper bound on values that could be sampled from this
+              uniform probability distribution.
+        """
         super().__init__()
         if maximum <= minimum:
             raise TycheDistributionsException("UniformDist maximum must be > than minimum. {} <= {}".format(
@@ -403,9 +507,15 @@ class UniformDist(ContinuousProbDist):
 
 class NormalDist(ContinuousProbDist):
     """
-    A normal probability distribution.
+    A normal probability distribution centered around `mean` with a
+    standard deviation of `std_dev`.
     """
     def __init__(self, mean: float, std_dev: float):
+        """
+        Parameters:
+            mean: The mean of this normal distribution.
+            std_dev: The standard deviation of this normal distribution.
+        """
         super().__init__()
         if std_dev <= 0:
             raise TycheDistributionsException("NormalDist std_dev must be > than 0. {} <= 0".format(std_dev))

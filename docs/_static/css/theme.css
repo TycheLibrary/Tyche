@@ -99,8 +99,8 @@ dl.function > dt {
 
 dl.method > dt,
 dl.property > dt {
-    background-color: #f9f9fb;
-    border-left: 3px solid #b4bcee;
+    background-color: #f3f4f7;
+    border-left: 3px solid #6878de;
 }
 
 
@@ -129,7 +129,7 @@ dl.field-list > dt {
     color: #444444;
     padding-left: 0;
 }
-dl.field-list > dd {
+dl.field-list:first-child > dd {
     font-size: 0.9em;
 }
 dl.field-list > dt,
