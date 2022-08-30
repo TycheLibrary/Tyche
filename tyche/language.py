@@ -11,7 +11,8 @@ from tyche.references import BakedSymbolReference, SymbolReference
 
 class TycheLanguageException(Exception):
     """
-    Class for detailing language exceptions.
+    An exception type that is thrown when errors occur in
+    the construction or use of the ADL language constructs.
     """
     def __init__(self, message: str):
         self.message = "TycheLanguageException: " + message

@@ -8,7 +8,8 @@ from typing import Generic, TypeVar, Callable, Optional
 
 class TycheReferencesException(Exception):
     """
-    Class for detailing exceptions with references.
+    An exception type that is thrown when errors occur in
+    the construction or use of references.
     """
     def __init__(self, message: str):
         self.message = "TycheReferencesException: " + message

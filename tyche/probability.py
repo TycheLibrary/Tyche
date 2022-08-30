@@ -6,7 +6,8 @@ used in many places in Tyche.
 
 class TycheProbabilityException(Exception):
     """
-    Class for detailing probability exceptions.
+    An exception type that is thrown when errors occur in
+    the use of the probability methods in this module.
     """
     def __init__(self, message: str):
         self.message = "TycheProbabilityException: " + message

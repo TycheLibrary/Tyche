@@ -30,7 +30,8 @@ TycheRoleField = TypeVar("TycheRoleField", bound=ExclusiveRoleDist)
 
 class TycheIndividualsException(Exception):
     """
-    Class for detailing exceptions with individuals.
+    An exception type that is thrown when errors occur in
+    the construction or use of individuals.
     """
     def __init__(self, message: str):
         self.message = "TycheIndividualsException: " + message
