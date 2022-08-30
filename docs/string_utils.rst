@@ -1,6 +1,0 @@
-tyche.string_utils
-=================================
-
-.. automodule:: tyche.string_utils
-    :members:
-    :show-inheritance:

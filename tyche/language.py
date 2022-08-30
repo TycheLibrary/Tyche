@@ -3,11 +3,10 @@ This module contains the classes for representing aleatoric description
 logic (ADL) sentences, and the maths for their evaluation.
 """
 import random
-from typing import Final, cast, Optional, Union, Tuple, NewType
+from typing import Final, cast, Optional, Union, Tuple, NewType, TypeVar, Iterable, Callable
 
 from tyche.probability import uncertain_bayes_rule
 from tyche.references import BakedSymbolReference, SymbolReference
-from tyche.string_utils import format_dict
 
 
 class TycheLanguageException(Exception):
@@ -246,7 +245,41 @@ class ExclusiveRoleDist:
             return ctx.to_str(detail_lvl=sub_detail_lvl, indent_lvl=sub_indent_lvl)
 
         key_values = [(prob, ctx) for ctx, prob in self]
-        return format_dict(key_values, key_format_fn=format_prob, val_format_fn=format_ctx, indent_lvl=indent_lvl)
+        return _format_dict(key_values, key_format_fn=format_prob, val_format_fn=format_ctx, indent_lvl=indent_lvl)
+
+
+KEY = TypeVar("KEY")
+VAL = TypeVar("VAL")
+
+
+def _format_dict(
+        dict_value: Union[dict[KEY, VAL], Iterable[tuple[KEY, VAL]]],
+        *,
+        key_format_fn: Callable[[KEY], str] = str,
+        val_format_fn: Callable[[VAL], str] = str,
+        indent_lvl: int = 0,
+        indent_str: str = "\t",
+        prefix: str = "{",
+        suffix: str = "}"
+) -> str:
+    """
+    Formats a dictionary into a string, allowing custom key and value
+    string formatting, indentation, and prefix/suffix modification.
+    """
+    if isinstance(dict_value, dict):
+        dict_value = dict_value.items()
+    key_values = [f"{key_format_fn(key)}: {val_format_fn(val)}" for key, val in dict_value]
+
+    if indent_lvl > 0:
+        indentation = indent_str * indent_lvl
+        sub_indentation = indent_str * (indent_lvl - 1)
+        join_by = f",\n{indentation}"
+        prefix = f"{prefix}\n{indentation}"
+        suffix = f"\n{sub_indentation}{suffix}"
+    else:
+        join_by = ", "
+
+    return f"{prefix}{join_by.join(key_values)}{suffix}"
 
 
 # This is used to allow passing names (e.g. "x", "y", etc...) directly

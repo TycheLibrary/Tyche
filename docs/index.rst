@@ -40,7 +40,6 @@ Table of Contents
    distributions
    probability
    references
-   string_utils
 
 
 Indices and tables
