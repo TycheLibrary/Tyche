@@ -2,10 +2,11 @@
 This module contains the classes for representing aleatoric description
 logic (ADL) sentences, and the maths for their evaluation.
 """
-import random
 from typing import Final, cast, Optional, Union, Tuple, NewType, TypeVar, Iterable, Callable
 
-from tyche.probability import uncertain_bayes_rule
+import numpy as np
+
+from tyche.probability import uncertain_bayes_rule, random_probability
 from tyche.references import BakedSymbolReference, SymbolReference
 
 
@@ -25,15 +26,66 @@ RoleDistributionEntries: type = Union[
 ]
 
 
-class ExclusiveRoleDist:
+class RoleDist:
     """
-    Represents a probability distribution of contexts for a role,
-    where either zero or one related context can possibly be
-    active at once when observed. The zero in this case refers
-    to the possibility of selecting the None-individual. However,
-    an individual is always active if you include the None-individual.
-    The items in the probability distribution use weights to
-    represent their relative likelihood of being selected.
+    A probability distribution of related contexts.
+    """
+    def is_empty(self) -> bool:
+        """
+        Returns whether no individuals (including None) have been added to this role.
+        If None was explicitly added, then this will return False.
+        """
+        raise NotImplementedError(f"is_empty is not implemented for {type(self).__name__}")
+
+    def clear(self):
+        """
+        Removes all individuals from this distribution.
+        """
+        raise NotImplementedError(f"clear is not implemented for {type(self).__name__}")
+
+    def contains(self, individual: Optional['TycheContext']):
+        """
+        Returns whether this role distribution contains the given individual.
+        """
+        raise NotImplementedError(f"contains is not implemented for {type(self).__name__}")
+
+    def contexts(self):
+        """
+        Yields all the contexts within this role, including
+        the None-individual if it is present.
+        """
+        raise NotImplementedError(f"contexts is not implemented for {type(self).__name__}")
+
+    def __len__(self):
+        """
+        Returns the number of related individuals in this role
+        (including the None-individual, if present).
+        """
+        raise NotImplementedError(f"__len__ is not implemented for {type(self).__name__}")
+
+    def __iter__(self):
+        """
+        Yields tuples of TycheContext objects or None, and their associated
+        probabilities (i.e. Tuple[Optional[TycheContext], float]).
+        """
+        raise NotImplementedError(f"__iter__ is not implemented for {type(self).__name__}")
+
+    def to_str(self, *, detail_lvl: int = 1, indent_lvl: int = 0):
+        """
+        Returns a text representation of the contents of this role distribution.
+        """
+        raise NotImplementedError(f"to_str is not implemented for {type(self).__name__}")
+
+
+class ExclusiveRoleDist(RoleDist):
+    """
+    A probability distribution of contexts for a role, where either
+    zero or one related contexts are related when the role is observed.
+    The zero in this case refers to the possibility of selecting the
+    None-individual. However, exactly one individual is always selected
+    if you include the None-individual. The items in the probability
+    distribution use weights to represent their relative likelihood of
+    being selected.
     """
     def __init__(self, entries: RoleDistributionEntries = None):
         self._entries: list[tuple[Optional['TycheContext'], float]] = []
@@ -59,22 +111,19 @@ class ExclusiveRoleDist:
                 raise TycheLanguageException(f"Illegal entries value: {entries}")
 
     def is_empty(self) -> bool:
-        """
-        Returns whether no individuals (including None) have been added to this role.
-        If None was explicitly added, then this will return False.
-        """
         return len(self._entries) == 0
 
     @property
     def total_weight(self):
-        """ The sum of the weights of all entries in this role distribution. """
+        """
+        The sum of the weights of all entries in this role distribution.
+        """
         total = 0
         for _, weight in self._entries:
             total += weight
         return total
 
     def clear(self):
-        """ Removes all individuals from this distribution. """
         self._entries = []
 
     def _index_of(self, individual: Optional['TycheContext']):
@@ -84,9 +133,6 @@ class ExclusiveRoleDist:
         return None
 
     def contains(self, individual: Optional['TycheContext']):
-        """
-        Returns whether this role distribution contains the given individual.
-        """
         return self._index_of(individual) is not None
 
     def add(self, individual: Optional['TycheContext'], weight: float = 1):
@@ -111,10 +157,10 @@ class ExclusiveRoleDist:
 
     def add_combining_weights(self, individual: Optional['TycheContext'], weight: float):
         """
-        Add an individual to this distribution with the given weight.
-        The weightings of individuals are relative to one another. If
-        an individual already exists in the distribution, then its
-        weighting will be increased by the given weight.
+        Add an individual to this distribution. If the individual already
+        exists in this role, then the given weight will be added to their
+        existing weight. Otherwise, the given weight will be used as the
+        weight of the individual.
         """
         if weight <= 0:
             raise TycheLanguageException("Value weights must be positive, not {}".format(weight))
@@ -135,7 +181,6 @@ class ExclusiveRoleDist:
         del self._entries[existing_index]
 
     def contexts(self):
-        """ Yields all the contexts within this role, including None if it is present. """
         for ctx, _ in self._entries:
             yield ctx
 
@@ -196,7 +241,6 @@ class ExclusiveRoleDist:
         return ExclusiveRoleDist(learned_entries)
 
     def __len__(self):
-        """ Returns the number of entries in this role, including the None role if it is present. """
         return max(1, len(self._entries))
 
     def __iter__(self):
@@ -216,9 +260,11 @@ class ExclusiveRoleDist:
         for context, weight in self._entries:
             yield context, weight / total_weight
 
-    def sample(self) -> Optional['TycheContext']:
-        """ Selects a random individual from this role based upon their weights. """
-        target_cumulative_weight = random.uniform(0, self.total_weight)
+    def sample(self, rng: np.random.Generator) -> Optional['TycheContext']:
+        """
+        Selects a random individual from this role based upon their weights.
+        """
+        target_cumulative_weight = rng.uniform(0, self.total_weight)
         cumulative_weight = 0
         for context, weight in self._entries:
             cumulative_weight += weight
@@ -237,16 +283,142 @@ class ExclusiveRoleDist:
         sub_detail_lvl = detail_lvl - 1
         sub_indent_lvl = 0 if indent_lvl == 0 else indent_lvl + 1
 
-        def format_prob(prob: int):
+        def format_prob(prob: float):
             return f"{100 * prob:.1f}%"
 
-        def format_ctx(ctx: TycheContext):
+        def format_ctx(ctx: Optional['TycheContext']):
             if ctx is None:
                 return "<None context>"
             return ctx.to_str(detail_lvl=sub_detail_lvl, indent_lvl=sub_indent_lvl)
 
         key_values = [(prob, ctx) for ctx, prob in self]
-        return _format_dict(key_values, key_format_fn=format_prob, val_format_fn=format_ctx, indent_lvl=indent_lvl)
+        return _format_dict(
+            key_values, key_format_fn=format_prob, val_format_fn=format_ctx, indent_lvl=indent_lvl,
+            prefix="Exclusive{"
+        )
+
+
+class IndependentRoleDist(RoleDist):
+    """
+    A probability distribution of contexts for a role, where each
+    relation to the contexts is independent. That is, zero, one,
+    or many contexts may be related when the role is observed.
+    Each relation has an independent probability of existing when
+    sampled. IndependentRoleDist cannot contain the None-individual.
+    """
+    def __init__(self, entries: RoleDistributionEntries = None):
+        self._entries: list[tuple['TycheContext', float]] = []
+        if entries is not None:
+            if isinstance(entries, list):
+                for entry in entries:
+                    if isinstance(entry, TycheContext):
+                        self.add(entry)
+                        continue
+                    if isinstance(entry, tuple):
+                        ctx, prob = entry
+                        if isinstance(ctx, TycheContext) and isinstance(prob, (bool, int, float)):
+                            self.add(ctx, prob)
+                            continue
+
+                    raise TycheLanguageException(f"Illegal entry in entries list: {entry}")
+            elif isinstance(entries, dict):
+                for ctx, prob in entries.items():
+                    if not isinstance(ctx, TycheContext) or not isinstance(prob, float):
+                        raise TycheLanguageException(f"Illegal entry in entries dict: {(ctx, prob)}")
+                    self.add(ctx, prob)
+            else:
+                raise TycheLanguageException(f"Illegal entries value: {entries}")
+
+    def is_empty(self) -> bool:
+        return len(self._entries) == 0
+
+    def clear(self):
+        self._entries = []
+
+    def _index_of(self, individual: Optional['TycheContext']):
+        for index, (ctx, _) in enumerate(self._entries):
+            if ctx is individual:
+                return index
+        return None
+
+    def contains(self, individual: Optional['TycheContext']):
+        return self._index_of(individual) is not None
+
+    def add(self, individual: 'TycheContext', prob: float = 1):
+        """
+        Add an individual to this distribution with the given probability.
+        The probability must fall within the range [0, 1].
+        """
+        if individual is None:
+            raise TycheLanguageException(f"{type(self).__name__} does not support the None-individual")
+        if prob < 0 or prob > 1:
+            raise TycheLanguageException(f"Probability must fall within the range [0, 1]. Invalid probability: {prob}")
+
+        entry = (individual, prob)
+
+        existing_index = self._index_of(individual)
+        if existing_index is not None:
+            self._entries[existing_index] = entry
+        else:
+            self._entries.append(entry)
+
+    def remove(self, individual: 'TycheContext'):
+        """
+        Removes the given individual from this distribution.
+        """
+        existing_index = self._index_of(individual)
+        if existing_index is None:
+            return
+
+        del self._entries[existing_index]
+
+    def contexts(self):
+        for ctx, _ in self._entries:
+            yield ctx
+
+    def __len__(self):
+        return len(self._entries)
+
+    def __iter__(self):
+        """
+        Yields tuples of TycheContext objects, and their associated
+        probabilities (i.e. Tuple[TycheContext, float]).
+        """
+        for context, prob in self._entries:
+            yield context, prob
+
+    def sample(self, rng: np.random.Generator) -> list['TycheContext']:
+        """
+        Selects a random set of related individuals based upon their probabilities.
+        """
+        result = []
+        for context, prob in self._entries:
+            if random_probability(rng) < prob:
+                result.append(context)
+
+        return result
+
+    def __str__(self):
+        return self.to_str()
+
+    def to_str(self, *, detail_lvl: int = 1, indent_lvl: int = 0):
+        if self.is_empty():
+            return f"{{<empty {type(self).__name__}>}}"
+
+        sub_detail_lvl = detail_lvl - 1
+        sub_indent_lvl = 0 if indent_lvl == 0 else indent_lvl + 1
+
+        def format_prob(prob: float):
+            return f"{100 * prob:.1f}%"
+
+        def format_ctx(ctx: 'TycheContext'):
+            return ctx.to_str(detail_lvl=sub_detail_lvl, indent_lvl=sub_indent_lvl)
+
+        key_values = [(prob, ctx) for ctx, prob in self]
+        return _format_dict(
+            key_values, key_format_fn=format_prob, val_format_fn=format_ctx, indent_lvl=indent_lvl,
+            prefix="Independent{"
+        )
 
 
 KEY = TypeVar("KEY")
@@ -304,7 +476,7 @@ class TycheContext:
         """
         raise NotImplementedError("eval is unimplemented for " + type(self).__name__)
 
-    def eval_role(self, role: 'CompatibleWithRole') -> ExclusiveRoleDist:
+    def eval_role(self, role: 'CompatibleWithRole') -> RoleDist:
         """
         Evaluates the given role to a distribution of possible
         other contexts if it were sampled within this context.
@@ -327,28 +499,28 @@ class TycheContext:
         Gets the probability of the atom with the given symbol
         being true, without modification by the context.
         """
-        raise NotImplementedError("eval_concept is unimplemented for " + type(self).__name__)
+        raise NotImplementedError("get_concept is unimplemented for " + type(self).__name__)
 
-    def get_role(self, symbol: str) -> ExclusiveRoleDist:
+    def get_role(self, symbol: str) -> RoleDist:
         """
         Gets the role distribution of the role with the
         given symbol, without modification by the context.
         """
-        raise NotImplementedError("eval_role is unimplemented for " + type(self).__name__)
+        raise NotImplementedError("get_role is unimplemented for " + type(self).__name__)
 
     def get_concept_reference(self, symbol: str) -> BakedSymbolReference[float]:
         """
         Gets a mutable reference to the probability of the atom with the given symbol
         being true. This reference can be used to get and set the value of the atom.
         """
-        raise NotImplementedError("eval_mutable_concept is unimplemented for " + type(self).__name__)
+        raise NotImplementedError("get_concept_reference is unimplemented for " + type(self).__name__)
 
-    def get_role_reference(self, symbol: str) -> BakedSymbolReference[ExclusiveRoleDist]:
+    def get_role_reference(self, symbol: str) -> BakedSymbolReference[RoleDist]:
         """
         Gets a mutable reference to the role distribution of the role with the
         given symbol. This reference can be used to get and set the value of the role.
         """
-        raise NotImplementedError("eval_mutable_role is unimplemented for " + type(self).__name__)
+        raise NotImplementedError("get_role_reference is unimplemented for " + type(self).__name__)
 
     def __str__(self):
         return self.to_str()
@@ -369,19 +541,19 @@ class EmptyContext(TycheContext):
     def eval(self, concept: 'ADLNode') -> float:
         return concept.direct_eval(self)
 
-    def eval_role(self, role: 'Role') -> ExclusiveRoleDist:
+    def eval_role(self, role: 'Role') -> RoleDist:
         return role.direct_eval(self)
 
     def get_concept(self, symbol: str) -> float:
         raise TycheLanguageException("Unknown atom {}".format(symbol))
 
-    def get_role(self, symbol: str) -> ExclusiveRoleDist:
+    def get_role(self, symbol: str) -> RoleDist:
         raise TycheLanguageException("Unknown role {}".format(symbol))
 
     def get_concept_reference(self, symbol: str) -> float:
         raise TycheLanguageException("Unknown atom {}".format(symbol))
 
-    def get_role_reference(self, symbol: str) -> ExclusiveRoleDist:
+    def get_role_reference(self, symbol: str) -> RoleDist:
         raise TycheLanguageException("Unknown role {}".format(symbol))
 
     def to_str(self, *, detail_lvl: int = 1, indent_lvl: int = 0):
@@ -659,10 +831,10 @@ class Role:
     def __eq__(self, other) -> bool:
         return type(self) == type(other) and self.symbol == cast('Role', other).symbol
 
-    def direct_eval(self, context: TycheContext) -> ExclusiveRoleDist:
+    def direct_eval(self, context: TycheContext) -> RoleDist:
         return context.get_role(self.symbol)
 
-    def eval_reference(self, context: TycheContext) -> BakedSymbolReference[ExclusiveRoleDist]:
+    def eval_reference(self, context: TycheContext) -> BakedSymbolReference[RoleDist]:
         """ Evaluates to a mutable reference to the value of this role. """
         return context.get_role_reference(self.symbol)
 
@@ -671,19 +843,19 @@ class ConstantRole(Role):
     """
     Represents a relationship that is constant.
     """
-    def __init__(self, symbol: str, value: ExclusiveRoleDist):
+    def __init__(self, symbol: str, value: RoleDist):
         super().__init__(symbol, special_symbol=True)
-        self.value = value
+        self.value: RoleDist = value
 
     def __eq__(self, other) -> bool:
         return type(self) == type(other) \
                and self.symbol == cast('ConstantRole', other).symbol \
                and self.value == cast('ConstantRole', other).value
 
-    def direct_eval(self, context: TycheContext) -> ExclusiveRoleDist:
+    def direct_eval(self, context: TycheContext) -> RoleDist:
         return self.value
 
-    def eval_reference(self, context: TycheContext) -> BakedSymbolReference[ExclusiveRoleDist]:
+    def eval_reference(self, context: TycheContext) -> BakedSymbolReference[RoleDist]:
         """ Evaluates to a mutable reference to the value of this role. """
         raise TycheLanguageException(f"Instances of {type(self).__name__} are immutable")
 
@@ -692,17 +864,17 @@ class ReferenceBackedRole(Role):
     """
     Represents a relationship that's value is taken from a reference.
     """
-    def __init__(self, value_ref: SymbolReference[ExclusiveRoleDist]):
+    def __init__(self, value_ref: SymbolReference[RoleDist]):
         super().__init__(value_ref.symbol, special_symbol=True)
         self.value_ref = value_ref
 
     def __eq__(self, other) -> bool:
         return type(self) == type(other) and self.value_ref == cast('ReferenceBackedRole', other).value_ref
 
-    def direct_eval(self, context: TycheContext) -> ExclusiveRoleDist:
+    def direct_eval(self, context: TycheContext) -> RoleDist:
         return self.value_ref.get(context)
 
-    def eval_reference(self, context: TycheContext) -> BakedSymbolReference[ExclusiveRoleDist]:
+    def eval_reference(self, context: TycheContext) -> BakedSymbolReference[RoleDist]:
         """ Evaluates to a mutable reference to the value of this role. """
         return self.value_ref.bake(context)
 
@@ -960,9 +1132,25 @@ class Expectation(ADLNode):
         return result
 
     @staticmethod
-    def evaluate_for_role(role: ExclusiveRoleDist, node: ADLNode, given: ADLNode) -> float:
+    def evaluate_for_role(role: RoleDist, node: ADLNode, given: ADLNode) -> float:
         """
-        Evaluates this expectation over the given role, without requiring a context.
+        Evaluates an expectation over the given role, without requiring a context.
+        This evaluation contains an implicit given that the role is non-None. If the
+        role only contains None, then this will evaluate to vacuously True.
+        """
+        if isinstance(role, ExclusiveRoleDist):
+            return Expectation.evaluate_for_exclusive_role(cast(ExclusiveRoleDist, role), node, given)
+
+        if isinstance(role, IndependentRoleDist):
+            return Expectation.evaluate_for_independent_role(cast(IndependentRoleDist, role), node, given)
+
+        raise TycheLanguageException(
+            f"Unexpected role distribution type {type(role).__name__}")
+
+    @staticmethod
+    def evaluate_for_exclusive_role(role: ExclusiveRoleDist, node: ADLNode, given: ADLNode) -> float:
+        """
+        Evaluates an expectation over the given role, without requiring a context.
         This evaluation contains an implicit given that the role is non-None. If the
         role only contains None, then this will evaluate to vacuously True.
         """
@@ -991,7 +1179,40 @@ class Expectation(ADLNode):
         return total_prob / total_given_prob
 
     @staticmethod
-    def reverse_observation(
+    def evaluate_for_independent_role(role: IndependentRoleDist, node: ADLNode, given: ADLNode) -> float:
+        """
+        Evaluates an expectation over the given role, without requiring a context.
+        If the role contains no related individuals that match the given, then this
+        evaluates to vacuously true.
+        """
+        node, given = Given.maybe_unpack(node, given)
+
+        # Expectations over independent roles just treat this as a big OR.
+        not_prob = 1
+        total_given_prob = 0
+        node_and_given = node & given
+        for other_context, prob in role:
+            if other_context is None:
+                continue
+
+            given_prob = other_context.eval(given)
+            if given_prob <= 0:
+                continue
+
+            true_prob = other_context.eval(node_and_given)
+            not_prob *= 1 - prob * true_prob
+            total_given_prob += prob * given_prob
+
+        # Vacuously true if no matched relations.
+        if total_given_prob == 0:
+            return 1
+
+        # Treatment of OR as a series of AND:
+        # x OR y === NOT ((NOT x) AND (NOT y)).
+        return 1 - not_prob
+
+    @staticmethod
+    def reverse_exclusive_observation(
             role: ExclusiveRoleDist, node: ADLNode, given: ADLNode, likelihood: float = 1) -> ExclusiveRoleDist:
         """
         Evaluates to a role that represents the chance that each individual in the role

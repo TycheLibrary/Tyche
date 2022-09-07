@@ -12,7 +12,7 @@ import numpy as np
 
 from tyche.language import ExclusiveRoleDist, TycheLanguageException, TycheContext, Concept, ADLNode, Expectation, \
     Role, RoleDistributionEntries, ALWAYS, CompatibleWithADLNode, CompatibleWithRole, NEVER, Constant, Given, \
-    ReferenceBackedRole
+    ReferenceBackedRole, RoleDist
 
 from tyche.probability import uncertain_bayes_rule
 from tyche.references import SymbolReference, FieldSymbolReference, GuardedSymbolReference, FunctionSymbolReference, \
@@ -20,12 +20,12 @@ from tyche.references import SymbolReference, FieldSymbolReference, GuardedSymbo
 
 
 TycheConceptValue = TypeVar("TycheConceptValue", float, int, bool)
-TycheRoleValue = TypeVar("TycheRoleValue", bound=ExclusiveRoleDist)
+TycheRoleValue = TypeVar("TycheRoleValue", bound=RoleDist)
 
 # Marks instance variables of classes as probabilities that
 # may be accessed by Tyche formulas.
 TycheConceptField = TypeVar("TycheConceptField", float, int, bool)
-TycheRoleField = TypeVar("TycheRoleField", bound=ExclusiveRoleDist)
+TycheRoleField = TypeVar("TycheRoleField", bound=RoleDist)
 
 
 class TycheIndividualsException(Exception):
@@ -542,7 +542,7 @@ class StatisticalRoleLearningStrategy(RoleLearningStrategy):
         self.initial_value_weight = initial_value_weight
         self.decay_rate = decay_rate
         self.decay_rate_for_decay_rate = decay_rate_for_decay_rate
-        self.initial_value: Optional[ExclusiveRoleDist] = None
+        self.initial_value: Optional[RoleDist] = None
         self.running_learning_rate_sums: dict[Optional[TycheContext], float] = {}
         self.running_likelihood_sums: dict[Optional[TycheContext], float] = {}
 
@@ -671,7 +671,7 @@ class Individual(TycheContext):
 
         return ADLNode.cast(node).direct_eval(self)
 
-    def eval_role(self, role: CompatibleWithRole) -> ExclusiveRoleDist:
+    def eval_role(self, role: CompatibleWithRole) -> RoleDist:
         return Role.cast(role).direct_eval(self)
 
     @staticmethod
@@ -726,24 +726,24 @@ class Individual(TycheContext):
         return coerced_ref.bake(self)
 
     @classmethod
-    def coerce_role_value(cls: type, value: any) -> ExclusiveRoleDist:
+    def coerce_role_value(cls: type, value: any) -> RoleDist:
         """
         Coerces role values to only allow WeightedRoleDistribution.
         In the future, this should accept other types of role distributions.
         """
-        if isinstance(value, ExclusiveRoleDist):
+        if isinstance(value, RoleDist):
             return value
 
         raise TycheIndividualsException(
             f"Error in {cls.__name__}: Role values must be of type "
-            f"{type(ExclusiveRoleDist).__name__}, not {type(value).__name__}"
+            f"{type(RoleDist).__name__}, not {type(value).__name__}"
         )
 
-    def get_role(self, symbol: str) -> ExclusiveRoleDist:
+    def get_role(self, symbol: str) -> RoleDist:
         value = self.roles.get(self, symbol)
         return self.coerce_role_value(value)
 
-    def get_role_reference(self, symbol: str) -> SymbolReference[ExclusiveRoleDist]:
+    def get_role_reference(self, symbol: str) -> SymbolReference[RoleDist]:
         ref = self.roles.get_reference(symbol)
         coerced_ref = GuardedSymbolReference(ref, self.coerce_role_value, self.coerce_role_value)
         return coerced_ref.bake(self)
@@ -755,12 +755,16 @@ class Individual(TycheContext):
         # Apply any learning strategy that may be present.
         symbol = expectation.role.symbol
         prev_role_value = self.get_role(symbol)
+        if not isinstance(prev_role_value, ExclusiveRoleDist):
+            raise TycheIndividualsException(
+                f"Unsupported observation of expectation over {type(prev_role_value).__name__}")
+
         if symbol in self.role_learning_strats:
             ref = cast(RoleFunctionSymbolReference, self.roles.get_reference(symbol))
             self.role_learning_strats[symbol].apply(self, ref, expectation, likelihood, learning_rate)
 
         # Propagate the observation!
-        possible_matching_individuals = Expectation.reverse_observation(
+        possible_matching_individuals = Expectation.reverse_exclusive_observation(
             prev_role_value, expectation.eval_node, expectation.given_node, likelihood
         )
         concept_given = Given(expectation.eval_node, expectation.given_node)
@@ -860,7 +864,7 @@ class IdentityIndividual(TycheContext):
     """
     name: Optional[str]
     learning_strat: Optional[RoleLearningStrategy]
-    id_role_value: TycheRoleValue
+    id_role_value: ExclusiveRoleDist
     id_role_ref: FieldSymbolReference = FieldSymbolReference("<id>", field_name="id_role_value")
     id_role: Role = ReferenceBackedRole(id_role_ref)
 
@@ -913,10 +917,10 @@ class IdentityIndividual(TycheContext):
     def eval(self, node: 'ADLNode') -> float:
         return Expectation.evaluate_for_role(self.id_role_value, node, ALWAYS)
 
-    def eval_role(self, role: 'Role') -> ExclusiveRoleDist:
+    def eval_role(self, role: 'Role') -> RoleDist:
         return role.direct_eval(self)
 
-    def get_role(self, symbol: str) -> ExclusiveRoleDist:
+    def get_role(self, symbol: str) -> RoleDist:
         self._verify_not_empty()
         return Expectation.evaluate_role_under_role(self.id_role_value, Role(symbol))
 
@@ -928,7 +932,7 @@ class IdentityIndividual(TycheContext):
         raise TycheIndividualsException(
             f"Cannot evaluate mutable concepts for instances of {type(self).__name__}")
 
-    def get_role_reference(self, symbol: str) -> SymbolReference[ExclusiveRoleDist]:
+    def get_role_reference(self, symbol: str) -> SymbolReference[RoleDist]:
         raise TycheIndividualsException(
             f"Cannot evaluate mutable roles for instances of {type(self).__name__}")
 
@@ -946,7 +950,7 @@ class IdentityIndividual(TycheContext):
             self.learning_strat.apply(self, self.id_role_ref, implicit_expectation, likelihood, learning_rate)
 
         # Propagate the observation!
-        possible_matching_individuals = Expectation.reverse_observation(
+        possible_matching_individuals = Expectation.reverse_exclusive_observation(
             prev_id_value, node, given, likelihood
         )
         for ctx, prob in possible_matching_individuals:

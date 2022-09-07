@@ -7,7 +7,7 @@ class TestLanguage(unittest.TestCase):
         self.x = Concept('my_X')
         self.y = Concept('my_Y')
         self.z = Concept('my_Z')
-        self.r = 'my_R'
+        self.r = Role('my_R')
 
     def tearDown(self):
         pass

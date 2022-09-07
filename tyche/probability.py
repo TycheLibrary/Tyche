@@ -2,6 +2,9 @@
 This module contains probability calculations that are
 used in many places in Tyche.
 """
+from typing import Union
+
+import numpy as np
 
 
 class TycheProbabilityException(Exception):
@@ -11,6 +14,15 @@ class TycheProbabilityException(Exception):
     """
     def __init__(self, message: str):
         self.message = "TycheProbabilityException: " + message
+
+
+def random_probability(rng: np.random.Generator, shape: Union[int, tuple, None] = None):
+    """
+    Returns a random probability from the range [0, 1].
+    """
+    # We use nextafter so that we can include the
+    # end-point (1) in the generated numbers.
+    return rng.uniform(0, np.nextafter(1.0, 1), shape)
 
 
 def uncertain_bayes_rule(prob_concept: float, prob_obs: float, prob_obs_given_concept: float, likelihood: float):

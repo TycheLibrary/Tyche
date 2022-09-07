@@ -35,6 +35,8 @@ import numpy as np
 from scipy import stats
 from numpy.typing import ArrayLike
 
+from tyche.probability import random_probability
+
 ProbDistLike: type = Union[float, int, 'ProbDist']
 
 
@@ -118,10 +120,7 @@ class ContinuousProbDist(ProbDist):
         return LinearTransformContinuousProbDist(self, 0, scale)
 
     def sample(self, rng: np.random.Generator, shape: Union[int, tuple, None] = None) -> ArrayLike:
-        # We use nextafter so that we can include the
-        # end-point (1) in the generated numbers.
-        prob = rng.uniform(0, np.nextafter(1.0, 1), shape)
-        return self.inverse_cdf(prob)
+        return self.inverse_cdf(random_probability(rng, shape))
 
     def cdf(self, x: ArrayLike) -> ArrayLike:
         """
