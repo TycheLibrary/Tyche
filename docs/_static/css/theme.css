@@ -2,16 +2,25 @@
 /* We want most links to be blue. */
 a.reference,
 div.sphinxsidebar a,
-a code.xref .pre {
+a code.xref .pre,
+a .viewcode-link,
+a .viewcode-link .pre {
     color: #5664bf;
     border-bottom: none;
 }
 a.reference:hover,
 div.sphinxsidebar a:hover,
-a:hover code.xref .pre {
+a:hover code.xref .pre,
+a:hover .viewcode-link,
+a:hover .viewcode-link .pre{
     color: #3d4787;
     border-bottom: none;
     text-decoration: underline;
+}
+
+a .viewcode-link {
+    font-size: 1.05em;
+    padding-left: 0.5em;
 }
 
 code.xref,
@@ -85,7 +94,7 @@ dl.property > dt {
     display: table;
     margin: 0.6em 0;
     padding: 0.6em;
-    font-size: 0.86em;
+    font-size: 0.75em;
     position: relative;
 }
 
@@ -95,6 +104,7 @@ dl.data > dt,
 dl.function > dt {
     background-color: #f3f4f7;
     border-top: 3px solid #6878de;
+    width: 100%;
 }
 
 dl.method > dt,
@@ -138,4 +148,13 @@ dl.field-list > dd {
 }
 dl.field-list > dd > ul > li {
     padding-bottom: 0.4em;
+}
+
+
+/* Styling of source code. */
+.body .highlight pre {
+    padding: 0.4em;
+    background-color: #fafafa;
+    white-space: pre-wrap;
+    word-wrap: break-word;
 }

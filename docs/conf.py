@@ -18,7 +18,7 @@ release = 'v1.0.0'
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
-extensions = ['sphinx.ext.autodoc', 'autoapi.extension', 'sphinx.ext.napoleon']
+extensions = ['sphinx.ext.autodoc', 'autoapi.extension', 'sphinx.ext.napoleon', 'sphinx.ext.viewcode']
 
 templates_path = ['_templates']
 exclude_patterns = []
