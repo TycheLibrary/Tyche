@@ -16,6 +16,10 @@ class TycheLanguageException(Exception):
     the construction or use of the ADL language constructs.
     """
     def __init__(self, message: str):
+        """
+        Parameters:
+            message: A description of the error.
+        """
         self.message = "TycheLanguageException: " + message
 
 
@@ -682,6 +686,13 @@ class ADLNode:
         i.e., this performs a logical NOT operation to this node.
         """
         return NEVER.when(self).otherwise(ALWAYS)
+
+    def __invert__(self):
+        """
+        Produces a new node that represents the complement (negation) of this node.
+        i.e., this performs a logical NOT operation to this node.
+        """
+        return self.complement()
 
     def __and__(self, node: CompatibleWithADLNode) -> 'ADLNode':
         """
