@@ -619,7 +619,6 @@ class StatisticalRoleLearningStrategy(RoleLearningStrategy):
                f"(initial_value_weight={self.initial_value_weight:.3f}, decay_rate={self.decay_rate:.3f})"
 
 
-
 class Individual(TycheContext):
     """
     A helper class for representing individual entities in an aleatoric knowledge base.

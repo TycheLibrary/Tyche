@@ -116,7 +116,8 @@ class TycheImplementation(AnonymousMessagesImplementation):
             person = self.by_name[model_person.name]
             for conversation_partner_name, weight in model_person.conversed_with.items():
                 conversation_partner = self.by_name[conversation_partner_name]
-                person.conversed_with().add(conversation_partner, weight)
+                if weight > 0:
+                    person.conversed_with().add(conversation_partner, weight)
 
     @staticmethod
     def _model_from_person(person: Person) -> ModelPerson:
@@ -127,7 +128,6 @@ class TycheImplementation(AnonymousMessagesImplementation):
         return model
 
     def get_model(self) -> Model:
-        """ Gets the current values of the model. """
         alice = TycheImplementation._model_from_person(self.alice)
         bob = TycheImplementation._model_from_person(self.bob)
         jeff = TycheImplementation._model_from_person(self.jeff)
@@ -146,15 +146,21 @@ class TycheImplementation(AnonymousMessagesImplementation):
         # Combine the messages into one observation.
         return functools.reduce(lambda a, b: a & b, message_sentences)
 
-    def query_author_probabilities(self, messages: list[Message]) -> dict[str, float]:
-        """ Infers who the author of the set of messages is. """
+    def query_author_probabilities(self, recipient_name: str, messages: list[Message]) -> dict[str, float]:
+        recipient = self.by_name[recipient_name]
         messages_sentence = self.build_messages_sentence(messages)
-        return {author.name: author.eval(messages_sentence) for author in self.all}
+
+        # Evaluate the probability of each possible recipient.
+        results = {}
+        for author, prob in recipient.conversed_with():
+            results[author.name] = author.eval(messages_sentence) * prob
+
+        return results
 
     def build_received_messages_observation(self, messages: list[Message]) -> ADLNode:
         """ Builds an observation that represents receiving the given set of messages. """
         return Expectation(self.r_conversed_with, self.build_messages_sentence(messages))
 
-    def apply_received_messages_observation(self, recipient: str, messages: list[Message]):
-        """ Marks a set of messages set as received by the given person. """
-        self.by_name[recipient].observe(self.build_received_messages_observation(messages))
+    def apply_received_messages_observation(self, recipient_name: str, messages: list[Message]):
+        recipient = self.by_name[recipient_name]
+        recipient.observe(self.build_received_messages_observation(messages))

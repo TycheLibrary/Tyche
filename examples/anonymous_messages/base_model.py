@@ -31,6 +31,12 @@ class ModelPerson:
         self.capitalises_first_word = capitalises_first_word
         self.is_positive = is_positive
 
+    def copy(self) -> 'ModelPerson':
+        person = ModelPerson(self.name, self.uses_emoji, self.capitalises_first_word, self.is_positive)
+        for key, value in self.conversed_with.items():
+            person.conversed_with[key] = value
+        return person
+
     def sample_message(self, rng: np.random.Generator) -> Message:
         """ Randomly samples this individual to a Person with known properties. """
         uses_emoji = rng.uniform(0, 1) < self.uses_emoji
@@ -73,6 +79,9 @@ class Model:
         self.all = [bob, alice, jeff]
         self.by_name = {p.name: p for p in self.all}
 
+    def copy(self) -> 'Model':
+        return Model(self.bob.copy(), self.alice.copy(), self.jeff.copy())
+
 
 class AnonymousMessagesImplementation:
     """
@@ -90,7 +99,7 @@ class AnonymousMessagesImplementation:
         """ Gets the current values of the model. """
         raise NotImplementedError()
 
-    def query_author_probabilities(self, messages: list[Message]) -> dict[str, float]:
+    def query_author_probabilities(self, recipient: str, messages: list[Message]) -> dict[str, float]:
         """ Infers who the author of the set of messages is. """
         raise NotImplementedError()
 

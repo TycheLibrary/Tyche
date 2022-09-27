@@ -2,11 +2,14 @@
 Contains the code used to test both the Tyche implementation and
 the ProbLog implementation of the anonymous messages example.
 """
+import logging
+import time
 from typing import cast
 
 import numpy as np
 
 from examples.anonymous_messages.base_model import AnonymousMessagesImplementation, Message, Model, ModelPerson
+from examples.anonymous_messages.problog_model import ProbLogImplementation
 from examples.anonymous_messages.tyche_model import Person, TycheImplementation
 
 
@@ -61,16 +64,25 @@ def run_inference_test(
     target_model = construct_target_model()
     imp.set_model(target_model)
 
-    print(f"Evaluating the accuracy of the {imp.name} implementation to predict the author of random sets of messages")
+    print(
+        f"Evaluating the accuracy of the {imp.name} implementation to "
+        f"predict the author of random sets of messages ({no_tests} tests per person, per message count)"
+    )
     for no_messages in range(min_messages, max_messages + 1):
+        start_time = time.time()
+
         correct_per_person = {p.name: 0 for p in target_model.all}
-        for person in target_model.all:
+        for recipient in target_model.all:
             for test in range(no_tests):
-                # Generate a random conversation from the current person.
+                # Sample who sent a message to the recipient.
+                person_name = recipient.sample_conversed_with(rng)
+                person = target_model.by_name[person_name]
+
+                # Generate a random conversation sent from the current person to the recipient.
                 conversation = generate_conversation(rng, person, no_messages)
 
                 # Calculate who the model would predict to have written the conversation.
-                predicted_author_probs = imp.query_author_probabilities(conversation)
+                predicted_author_probs = imp.query_author_probabilities(recipient.name, conversation)
                 max_prob: float = -1
                 max_prob_author: str = ""
                 for author_name, prob in predicted_author_probs.items():
@@ -79,17 +91,18 @@ def run_inference_test(
                         max_prob_author = author_name
 
                 # Check if the prediction was correct.
-                if max_prob_author == person.name:
-                    correct_per_person[person.name] += 1
+                if max_prob_author == person_name:
+                    correct_per_person[recipient.name] += 1
 
-        print(f".. {no_messages} message{'s' if no_messages > 1 else ''}: ".ljust(16) + ", ".join(
+        duration_ms = (time.time() - start_time) * 1000 / no_tests
+        print(f".. {no_messages} message{'s' if no_messages > 1 else ''}: ".ljust(17) + ", ".join(
             [f"{name} = {100 * correct / no_tests:.1f}%" for name, correct in correct_per_person.items()]
-        ))
+        ).ljust(45) + f"({duration_ms:.2f} ms per evaluation)")
 
 
 def run_learning_test(
         imp: AnonymousMessagesImplementation, *,
-        no_trials: int = 10, no_observations: int = 5_000, repetitions: int = 2,
+        no_trials: int = 10, no_observations: int = 2500, repetitions: int = 2,
         min_messages: int = 2, max_messages: int = 4):
     """
     Runs tests on the given implementation to evaluate its performance at
@@ -98,7 +111,6 @@ def run_learning_test(
     rng = np.random.default_rng()
     tyche_print_imp = TycheImplementation()
     target_model = construct_target_model()
-    imp.set_model(target_model)
 
     print(
         f"Running with {no_trials} trials, {no_observations} observations per trial, "
@@ -109,6 +121,7 @@ def run_learning_test(
     example_observations = None
     for trial_no in range(no_trials):
         print(f".. running trial {trial_no + 1}")
+        trial_start_time = time.time()
 
         initial_learned_model = create_initial_learn_model()
         imp.set_model(initial_learned_model)
@@ -142,6 +155,7 @@ def run_learning_test(
 
         # Record the results.
         trial_results.append(imp.get_model())
+        print(f"  * took {time.time() - trial_start_time:.2f} seconds")
 
     print()
     print("Example Observations:")
@@ -192,7 +206,28 @@ def run_learning_test(
     print()
 
 
+class FilteringStreamHandler(logging.StreamHandler):
+    """
+    Filters out unnecessary information from the ProbLog logging.
+    """
+    IGNORE_LINES_CONTAINING: list[str] = ["Cycle breaking:", "Clark's completion:", "DSharp compilation:", "Grounding:"]
+
+    def emit(self, record):
+        message = record.getMessage()
+        for text in FilteringStreamHandler.IGNORE_LINES_CONTAINING:
+            if text in message:
+                return
+
+        super(FilteringStreamHandler, self).emit(record)
+
+
 if __name__ == "__main__":
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        handlers=[FilteringStreamHandler()]
+    )
+
     print("--------------------------")
     print("   Tyche Implementation   ")
     print("--------------------------")
@@ -200,3 +235,13 @@ if __name__ == "__main__":
     run_inference_test(tyche_imp)
     print()
     run_learning_test(tyche_imp)
+
+    print()
+    print("----------------------------")
+    print("   ProbLog Implementation   ")
+    print("----------------------------")
+    problog_imp = ProbLogImplementation()
+    run_inference_test(problog_imp)
+    print()
+    run_learning_test(problog_imp)
+
