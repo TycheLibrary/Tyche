@@ -132,17 +132,23 @@ class TestIndividuals(unittest.TestCase):
         self.assertAlmostEqual(0, individual.eval(Expectation("independent_role_var", "z", flip)))
         individual.independent_role_var.add(individual.sub2, 1)
         self.assertAlmostEqual(1, individual.eval(Expectation("independent_role_var", "z")))
-        self.assertAlmostEqual(0.5, individual.eval(Expectation("independent_role_var", "z", flip)))
+        self.assertAlmostEqual(0.5 / (1 - 0.5**2), individual.eval(Expectation("independent_role_var", "z", flip)))
 
         # More complex test cases.
         try:
             z_given_z = Expectation("independent_role_var", "z", "z")
             individual.sub1.z = 0.2
             individual.sub2.z = 0.8
-            self.assertAlmostEqual(1 - (1 - 0.2**2) * (1 - 0.8**2), individual.eval(z_given_z))
+            self.assertAlmostEqual(
+                (1 - (1 - 0.2**2) * (1 - 0.8**2)) / (1 - (1 - 0.2) * (1 - 0.8)),
+                individual.eval(z_given_z)
+            )
             individual.sub1.z = 0.5
             individual.sub2.z = 0.7
-            self.assertAlmostEqual(1 - (1 - 0.5**2) * (1 - 0.7**2), individual.eval(z_given_z))
+            self.assertAlmostEqual(
+                (1 - (1 - 0.5**2) * (1 - 0.7**2)) / (1 - (1 - 0.5) * (1 - 0.7)),
+                individual.eval(z_given_z)
+            )
         finally:
             individual.sub1.z = 0
             individual.sub2.z = 1
@@ -160,18 +166,21 @@ class TestIndividuals(unittest.TestCase):
             individual.independent_role_var.add(individual.sub1, 0.25)
             individual.independent_role_var.add(individual.sub2, 0.75)
             self.assertAlmostEqual(
-                1 - ((1 - 0.25 * 0.6 * 0.85) * (1 - 0.75 * 0.4 * 0.75)),
+                (1 - (1 - 0.25 * 0.6 * 0.85) * (1 - 0.75 * 0.4 * 0.75)) /
+                (1 - (1 - 0.25 * 0.85) * (1 - 0.75 * 0.75)),
                 individual.eval(Expectation("independent_role_var", "z", "y"))
             )
         finally:
             individual.sub1.z = 0
-            individual.sub1.y = 0.5
+            individual.sub1._y = 0.5
             individual.sub2.z = 1
-            individual.sub2.y = 0.2
+            individual.sub2._y = 0.2
+            individual.independent_role_var.add(individual.sub1, 0.25)
+            individual.independent_role_var.add(individual.sub2, 0.75)
 
         # Removing the individuals should affect the expectation.
         individual.independent_role_var.remove(individual.sub1)
-        self.assertAlmostEqual(0.75, individual.eval(Expectation("independent_role_var", "z")))
+        self.assertAlmostEqual(1, individual.eval(Expectation("independent_role_var", "z")))
         individual.independent_role_var.add(individual.sub1, 1)
         individual.independent_role_var.remove(individual.sub2)
         self.assertAlmostEqual(0, individual.eval(Expectation("independent_role_var", "z")))

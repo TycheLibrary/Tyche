@@ -60,6 +60,32 @@ class RoleDist:
         """
         raise NotImplementedError(f"contexts is not implemented for {type(self).__name__}")
 
+    def calculate_expectation(self, node: 'ADLNode', given: 'ADLNode') -> float:
+        """
+        Evaluates an expectation over this role. This evaluation contains an
+        implicit given that the role has at least one related individual. If the
+        role contains no non-null entries, then this will evaluate to vacuously True.
+        """
+        raise NotImplementedError(f"calculate_expectation_operator is not implemented for {type(self).__name__}")
+
+    def reverse_expectation_influences(
+            self, node: 'ADLNode', given: 'ADLNode', likelihood: float = 1
+    ) -> list[tuple['TycheContext', float]]:
+        """
+        Calculates the influence of each related individual in this role on the truth
+        of an expectation with the given parameters. The likelihood gives the chance
+        that the observation was true (i.e., a likelihood of 0 represents that the
+        observation of this expectation was false).
+        """
+        raise NotImplementedError(f"calculate_reverse_expectation_influence")
+
+    def calculate_exists(self):
+        """
+        Evaluates the likelihood that this role has at least one related individual.
+        The null individual is considered to represent "no relation".
+        """
+        raise NotImplementedError(f"calculate_exists_operator is not implemented for {type(self).__name__}")
+
     def __len__(self):
         """
         Returns the number of related individuals in this role
@@ -222,7 +248,7 @@ class ExclusiveRoleDist(RoleDist):
         if self.total_weight == 0:
             return self
 
-        role_belief: float = Expectation.evaluate_for_role(self, observation, ALWAYS)
+        role_belief: float = self.calculate_expectation(observation, ALWAYS)
 
         learned_entries: list[tuple[Optional['TycheContext'], float]] = []
         total_weight = self.total_weight
@@ -243,6 +269,80 @@ class ExclusiveRoleDist(RoleDist):
                 learned_entries.append((context, learned_weight))
 
         return ExclusiveRoleDist(learned_entries)
+
+    def calculate_expectation(self, node: 'ADLNode', given: 'ADLNode') -> float:
+        node, given = Given.maybe_unpack(node, given)
+
+        total_prob = 0.0
+        total_given_prob = 0.0
+        node_and_given = node & given
+        for other_context, prob in self:
+            if other_context is None:
+                continue
+
+            given_prob = other_context.eval(given)
+            if given_prob <= 0:
+                continue
+
+            true_prob = other_context.eval(node_and_given)
+            total_prob += prob * true_prob
+            total_given_prob += prob * given_prob
+
+        # Vacuously True if only None in role, or if all givens evaluated to never.
+        if total_given_prob == 0:
+            return 1
+
+        # Division for the implicit given non-None.
+        return total_prob / total_given_prob
+
+    def reverse_expectation_influences(
+            self, node: 'ADLNode', given: 'ADLNode', likelihood: float = 1
+    ) -> list[tuple['TycheContext', float]]:
+
+        entries: list[tuple[TycheContext, float]] = []
+
+        total_given_prob = 0.0
+        for other_context, prob in self:
+            if other_context is None:
+                continue
+
+            given_prob = other_context.eval(given)
+            if given_prob <= 0:
+                continue
+
+            node_prob = other_context.eval(node)
+            given_prob = other_context.eval(given)
+
+            matches_observation_prob = likelihood * node_prob + (1 - likelihood) * (1 - node_prob)
+            chosen_prob = prob * given_prob
+            total_given_prob += chosen_prob
+
+            weight = chosen_prob * matches_observation_prob
+            if weight > 0:
+                entries.append((other_context, weight))
+
+        # If no entries could have possibly matched, then the expectation would have been vacuously true.
+        if total_given_prob == 0:
+            return entries
+        if len(entries) == 0:
+            raise TycheLanguageException("The observation is impossible under this model")
+
+        return entries
+
+    def calculate_exists(self):
+        exists_weight = 0
+        for other_context, prob in self:
+            if other_context is None:
+                return 1.0 - prob
+            else:
+                exists_weight += prob
+
+        # Vacuous False if no entries in role.
+        if exists_weight == 0:
+            return 0.0
+
+        # Otherwise, there was no None entry in this role, so it always exists.
+        return 1.0
 
     def __len__(self):
         return max(1, len(self._entries))
@@ -379,6 +479,39 @@ class IndependentRoleDist(RoleDist):
     def contexts(self):
         for ctx, _ in self._entries:
             yield ctx
+
+    def calculate_expectation(self, node: 'ADLNode', given: 'ADLNode') -> float:
+        node, given = Given.maybe_unpack(node, given)
+
+        # Expectations over independent roles just act as a big OR.
+        not_prob = 1
+        not_given_prob = 1
+        node_and_given = node & given
+        for other_context, prob in self:
+            if other_context is None:
+                continue
+
+            given_prob = other_context.eval(given)
+            if given_prob <= 0:
+                continue
+
+            true_prob = other_context.eval(node_and_given)
+            not_prob *= 1 - prob * true_prob
+            not_given_prob *= 1 - prob * given_prob
+
+        # Vacuously true if no matched relations.
+        if 1 - not_given_prob <= 0:
+            return 1
+
+        return (1 - not_prob) / (1 - not_given_prob)
+
+    def calculate_exists(self):
+        # Calculate the chance that we select none of the individuals.
+        none_selected_prob = 1
+        for other_context, prob in self:
+            none_selected_prob *= 1 - prob
+
+        return 1 - none_selected_prob
 
     def __len__(self):
         return len(self._entries)
@@ -1137,130 +1270,16 @@ class Expectation(ADLNode):
                 result.add_combining_weights(None, outer_prob)
                 continue
 
-            for inner_context, inner_prob in outer_context.get_role(inner_role.symbol):
+            inner_role_value = outer_context.get_role(inner_role.symbol)
+            if not isinstance(inner_role_value, ExclusiveRoleDist):
+                raise TycheLanguageException(
+                    f"Evaluating a role of type {type(inner_role_value).__name__} "
+                    f"under an ExclusiveRoleDist is not yet supported")
+
+            for inner_context, inner_prob in inner_role_value:
                 result.add_combining_weights(inner_context, outer_prob * inner_prob)
 
         return result
-
-    @staticmethod
-    def evaluate_for_role(role: RoleDist, node: ADLNode, given: ADLNode) -> float:
-        """
-        Evaluates an expectation over the given role, without requiring a context.
-        This evaluation contains an implicit given that the role is non-None. If the
-        role only contains None, then this will evaluate to vacuously True.
-        """
-        if isinstance(role, ExclusiveRoleDist):
-            return Expectation.evaluate_for_exclusive_role(cast(ExclusiveRoleDist, role), node, given)
-
-        if isinstance(role, IndependentRoleDist):
-            return Expectation.evaluate_for_independent_role(cast(IndependentRoleDist, role), node, given)
-
-        raise TycheLanguageException(
-            f"Unexpected role distribution type {type(role).__name__}")
-
-    @staticmethod
-    def evaluate_for_exclusive_role(role: ExclusiveRoleDist, node: ADLNode, given: ADLNode) -> float:
-        """
-        Evaluates an expectation over the given role, without requiring a context.
-        This evaluation contains an implicit given that the role is non-None. If the
-        role only contains None, then this will evaluate to vacuously True.
-        """
-        node, given = Given.maybe_unpack(node, given)
-
-        total_prob = 0.0
-        total_given_prob = 0.0
-        node_and_given = node & given
-        for other_context, prob in role:
-            if other_context is None:
-                continue
-
-            given_prob = other_context.eval(given)
-            if given_prob <= 0:
-                continue
-
-            true_prob = other_context.eval(node_and_given)
-            total_prob += prob * true_prob
-            total_given_prob += prob * given_prob
-
-        # Vacuously True if only None in role, or if all givens evaluated to never.
-        if total_given_prob == 0:
-            return 1
-
-        # Division for the implicit given non-None.
-        return total_prob / total_given_prob
-
-    @staticmethod
-    def evaluate_for_independent_role(role: IndependentRoleDist, node: ADLNode, given: ADLNode) -> float:
-        """
-        Evaluates an expectation over the given role, without requiring a context.
-        If the role contains no related individuals that match the given, then this
-        evaluates to vacuously true.
-        """
-        node, given = Given.maybe_unpack(node, given)
-
-        # Expectations over independent roles just treat this as a big OR.
-        not_prob = 1
-        total_given_prob = 0
-        node_and_given = node & given
-        for other_context, prob in role:
-            if other_context is None:
-                continue
-
-            given_prob = other_context.eval(given)
-            if given_prob <= 0:
-                continue
-
-            true_prob = other_context.eval(node_and_given)
-            not_prob *= 1 - prob * true_prob
-            total_given_prob += prob * given_prob
-
-        # Vacuously true if no matched relations.
-        if total_given_prob == 0:
-            return 1
-
-        # Treatment of OR as a series of AND:
-        # x OR y === NOT ((NOT x) AND (NOT y)).
-        return 1 - not_prob
-
-    @staticmethod
-    def reverse_exclusive_observation(
-            role: ExclusiveRoleDist, node: ADLNode, given: ADLNode, likelihood: float = 1) -> ExclusiveRoleDist:
-        """
-        Evaluates to a role that represents the chance that each individual in the role
-        was the individual that contributed to the observation. The likelihood gives the
-        chance that the observation was true (i.e., a likelihood of 0 represents that the
-        observation of this expectation was false).
-        """
-        entries: list[tuple[TycheContext, float]] = []
-
-        total_given_prob = 0.0
-        for other_context, prob in role:
-            if other_context is None:
-                continue
-
-            given_prob = other_context.eval(given)
-            if given_prob <= 0:
-                continue
-
-            node_prob = other_context.eval(node)
-            given_prob = other_context.eval(given)
-
-            matches_observation_prob = likelihood * node_prob + (1 - likelihood) * (1 - node_prob)
-            chosen_prob = prob * given_prob
-            total_given_prob += chosen_prob
-
-            weight = chosen_prob * matches_observation_prob
-            if weight > 0:
-                entries.append((other_context, weight))
-
-        # If no entries could have possibly matched, then the expectation would have been vacuously true.
-        if total_given_prob == 0:
-            return ExclusiveRoleDist()
-        if len(entries) == 0:
-            raise TycheLanguageException("The observation is impossible under this model")
-
-        # Division for the implicit given non-None.
-        return ExclusiveRoleDist(entries)
 
     def direct_eval(self, context: TycheContext):
         """
@@ -1270,7 +1289,8 @@ class Expectation(ADLNode):
         If the role only contains None, then this will evaluate
         to vacuously True.
         """
-        return Expectation.evaluate_for_role(context.eval_role(self.role), self.eval_node, self.given_node)
+        role_value = context.eval_role(self.role)
+        return role_value.calculate_expectation(self.eval_node, self.given_node)
 
 
 class Exists(ADLNode):
@@ -1304,19 +1324,8 @@ class Exists(ADLNode):
         """
         Evaluates the likelihood that the given role has a non-None value.
         """
-        exists_weight = 0
-        for other_context, prob in context.eval_role(self.role):
-            if other_context is None:
-                return 1.0 - prob
-            else:
-                exists_weight += prob
-
-        # Vacuous False if no entries in role.
-        if exists_weight == 0:
-            return 0.0
-
-        # Otherwise, there was no None entry in this role, so it always exists.
-        return 1.0
+        role_value = context.eval_role(self.role)
+        return role_value.calculate_exists()
 
 
 class LeastFixedPoint(ADLNode):

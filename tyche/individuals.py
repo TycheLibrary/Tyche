@@ -763,8 +763,8 @@ class Individual(TycheContext):
             self.role_learning_strats[symbol].apply(self, ref, expectation, likelihood, learning_rate)
 
         # Propagate the observation!
-        possible_matching_individuals = Expectation.reverse_exclusive_observation(
-            prev_role_value, expectation.eval_node, expectation.given_node, likelihood
+        possible_matching_individuals = prev_role_value.reverse_expectation_influences(
+            expectation.eval_node, expectation.given_node, likelihood
         )
         concept_given = Given(expectation.eval_node, expectation.given_node)
         for ctx, prob in possible_matching_individuals:
@@ -949,8 +949,8 @@ class IdentityIndividual(TycheContext):
             self.learning_strat.apply(self, self.id_role_ref, implicit_expectation, likelihood, learning_rate)
 
         # Propagate the observation!
-        possible_matching_individuals = Expectation.reverse_exclusive_observation(
-            prev_id_value, node, given, likelihood
+        possible_matching_individuals = prev_id_value.reverse_expectation_influences(
+            node, given, likelihood
         )
         for ctx, prob in possible_matching_individuals:
             if ctx is not None:
