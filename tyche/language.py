@@ -68,14 +68,17 @@ class RoleDist:
         """
         raise NotImplementedError(f"calculate_expectation_operator is not implemented for {type(self).__name__}")
 
-    def reverse_expectation_influences(
+    def reverse_expectation_learning_params(
             self, node: 'ADLNode', given: 'ADLNode', likelihood: float = 1
-    ) -> list[tuple['TycheContext', float]]:
+    ) -> list[tuple['TycheContext', float, float]]:
         """
-        Calculates the influence of each related individual in this role on the truth
-        of an expectation with the given parameters. The likelihood gives the chance
-        that the observation was true (i.e., a likelihood of 0 represents that the
+        Calculates the influence and learning rate of each related individual in this role
+        for the truth of an expectation with the given parameters. The likelihood gives the
+        chance that the observation was true (i.e., a likelihood of 0 represents that the
         observation of this expectation was false).
+
+        Returns a tuple of each related context that could have been selected, its likelihood,
+        and its influence.
         """
         raise NotImplementedError(f"calculate_reverse_expectation_influence")
 
@@ -295,11 +298,11 @@ class ExclusiveRoleDist(RoleDist):
         # Division for the implicit given non-None.
         return total_prob / total_given_prob
 
-    def reverse_expectation_influences(
+    def reverse_expectation_learning_params(
             self, node: 'ADLNode', given: 'ADLNode', likelihood: float = 1
-    ) -> list[tuple['TycheContext', float]]:
+    ) -> list[tuple['TycheContext', float, float]]:
 
-        entries: list[tuple[TycheContext, float]] = []
+        weighted_entries: list[tuple[TycheContext, float]] = []
 
         total_given_prob = 0.0
         for other_context, prob in self:
@@ -311,7 +314,6 @@ class ExclusiveRoleDist(RoleDist):
                 continue
 
             node_prob = other_context.eval(node)
-            given_prob = other_context.eval(given)
 
             matches_observation_prob = likelihood * node_prob + (1 - likelihood) * (1 - node_prob)
             chosen_prob = prob * given_prob
@@ -319,13 +321,24 @@ class ExclusiveRoleDist(RoleDist):
 
             weight = chosen_prob * matches_observation_prob
             if weight > 0:
-                entries.append((other_context, weight))
+                weighted_entries.append((other_context, weight))
 
         # If no entries could have possibly matched, then the expectation would have been vacuously true.
         if total_given_prob == 0:
-            return entries
-        if len(entries) == 0:
+            return []
+        if len(weighted_entries) == 0:
             raise TycheLanguageException("The observation is impossible under this model")
+
+        # Scale the related contexts based upon their weight.
+        total_weight = 0
+        for _, weight in weighted_entries:
+            total_weight += weight
+
+        entries: list[tuple[TycheContext, float, float]] = []
+        for ctx, weight in weighted_entries:
+            prob = weight / total_weight
+            # Likelihood shouldn't change for a mutually exclusive role.
+            entries.append((ctx, likelihood, prob))
 
         return entries
 
@@ -487,8 +500,8 @@ class IndependentRoleDist(RoleDist):
         not_prob = 1
         not_given_prob = 1
         node_and_given = node & given
-        for other_context, prob in self:
-            if other_context is None:
+        for other_context, selected_prob in self:
+            if other_context is None or selected_prob <= 0:
                 continue
 
             given_prob = other_context.eval(given)
@@ -496,14 +509,81 @@ class IndependentRoleDist(RoleDist):
                 continue
 
             true_prob = other_context.eval(node_and_given)
-            not_prob *= 1 - prob * true_prob
-            not_given_prob *= 1 - prob * given_prob
+            not_prob *= 1 - selected_prob * true_prob
+            not_given_prob *= 1 - selected_prob * given_prob
 
         # Vacuously true if no matched relations.
         if 1 - not_given_prob <= 0:
             return 1
 
         return (1 - not_prob) / (1 - not_given_prob)
+
+    def reverse_expectation_learning_params(
+            self, node: 'ADLNode', given: 'ADLNode', likelihood: float = 1
+    ) -> list[tuple['TycheContext', float, float]]:
+
+        node, given = Given.maybe_unpack(node, given)
+        node_and_given = node & given
+
+        # Calculate the probabilities required for all related individuals.
+        related_probs: list[tuple[TycheContext, float, float]] = []
+        for child_ctx, selected_prob in self:
+            if child_ctx is None or selected_prob <= 0:
+                continue
+
+            given_prob = child_ctx.eval(given)
+            if given_prob <= 0:
+                continue
+
+            true_prob = child_ctx.eval(node_and_given)
+            selected_prob = 1 * given_prob * selected_prob
+            related_probs.append((
+                child_ctx, true_prob, selected_prob
+            ))
+
+        # Calculate the overall probability of the expectation.
+        obs_not_prob = 1
+        obs_not_given_prob = 1
+        for child_ctx, true_prob, selected_prob in related_probs:
+            obs_not_prob *= 1 - true_prob * selected_prob
+            obs_not_given_prob *= 1 - selected_prob
+
+        obs_given_prob = 1 - obs_not_given_prob
+        observation_prob = ((1 - obs_not_prob) / obs_given_prob if obs_given_prob > 0 else 1)
+        obs_matches_expected_prob = likelihood * observation_prob + (1 - likelihood) * (1 - observation_prob)
+        if obs_matches_expected_prob <= 0:
+            raise TycheLanguageException(f"The observation is impossible under this model")
+
+        # Calculate the influence of each related individual!
+        entries: list[tuple[TycheContext, float, float]] = []
+        for child_ctx, child_true_prob, _ in related_probs:
+            # Calculate P(obs|child) and P(obs|NOT child)
+            given_child_not_prob = 1
+            given_not_child_not_prob = 1
+            child_not_given_prob = 1
+            for ctx, true_prob, selected_prob in related_probs:
+                if ctx == child_ctx:
+                    given_child_not_prob *= 1 - selected_prob
+                else:
+                    given_child_not_prob *= 1 - true_prob * selected_prob
+                    given_not_child_not_prob *= 1 - true_prob * selected_prob
+
+                child_not_given_prob *= 1 - selected_prob
+
+            child_given_prob = 1 - child_not_given_prob
+            obs_given_child_prob = (
+                (1 - given_child_not_prob) / child_given_prob if child_given_prob > 0 else 1)
+            obs_given_not_child_prob = (
+                (1 - given_not_child_not_prob) / child_given_prob if child_given_prob > 0 else 1)
+
+            child_likelihood = uncertain_bayes_rule(
+                child_true_prob, observation_prob, obs_given_child_prob, likelihood)
+
+            # Corresponds to the learning_rate parameter.
+            child_influence = abs(obs_given_child_prob - obs_given_not_child_prob)
+            entries.append((child_ctx, child_likelihood, child_influence))
+
+        return entries
 
     def calculate_exists(self):
         # Calculate the chance that we select none of the individuals.

@@ -10,13 +10,15 @@ from tyche.language import *
 
 class Person(Individual):
     is_male: TycheConceptField
+    friends: TycheRoleField
 
     def __init__(self, name: str = None):
         super().__init__(name=name)
+        self.is_male = False
+        self.friends = IndependentRoleDist()
         self.age = UniformDist(0, 120)
         self.height_cm = NormalDist(170.8, 7)
         self.tall_cutoff = 6 * 30.48  # 6 feet in cm
-        self.is_male = False
 
     @concept()
     def adult(self) -> float:
@@ -26,7 +28,7 @@ class Person(Individual):
     def is_tall(self) -> float:
         return self.height_cm > self.tall_cutoff
 
-    @is_tall.learning_func(StatisticalConceptLearningStrategy(initial_value_weight=1))
+    @is_tall.learning_func(DirectConceptLearningStrategy())
     def set_is_tall(self, prob: float):
         # Move the mean of the height distribution to a point where is_tall would return prob.
         # This relies on the tall cutoff point and the standard deviation of height being fixed.
@@ -95,9 +97,17 @@ if __name__ == "__main__":
     clare = Student("Clare")
     natasha = Supervisor("Natasha", 0.25)
     tim = Supervisor("Tim", 0.85)
+
     clare.supervisor().add(natasha, 2)
     clare.supervisor().add(tim, 0.5)
     clare.supervisor().add(None, 1)
+
+    clare.friends.add(natasha, 1)
+    clare.friends.add(tim, 0.5)
+    natasha.friends.add(clare, 0.8)
+    natasha.friends.add(tim, 0.8)
+    tim.friends.add(natasha, 0.3)
+    tim.friends.add(clare, 0.7)
 
     print()
     print("Model:")
@@ -148,6 +158,33 @@ if __name__ == "__main__":
     print(f"* After: {clare.supervisor()}")
     print()
     print("P(clare's supervisor has a WWCC) = {:.3f}".format(clare.eval(supervisor_WWCC)))
+    print()
+
+    print()
+    print("Model:")
+    print(f"  {clare}")
+    print(f"  {natasha}")
+    print(f"  {tim}")
+    print()
+
+    print()
+    print("Learning Whether Tim's Friends are Tall:")
+    expect_friend_tall = Expectation("friends", "tall")
+    expect_friend_not_tall = Expectation("friends", ~Concept("tall"))
+    print(f"* Before: {tim.eval(expect_friend_tall)}")
+    print(f"* Observe {expect_friend_tall}")
+    tim.observe(expect_friend_tall)
+    print(f"* After: {tim.eval(expect_friend_tall)}")
+    print(f"* Observe {expect_friend_not_tall}")
+    tim.observe(expect_friend_not_tall)
+    print(f"* After: {tim.eval(expect_friend_tall)}")
+    print()
+
+    print()
+    print("Model:")
+    print(f"  {clare}")
+    print(f"  {natasha}")
+    print(f"  {tim}")
     print()
 
     # clare.supervisor #is a distribution of individuals

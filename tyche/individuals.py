@@ -754,22 +754,18 @@ class Individual(TycheContext):
         # Apply any learning strategy that may be present.
         symbol = expectation.role.symbol
         prev_role_value = self.get_role(symbol)
-        if not isinstance(prev_role_value, ExclusiveRoleDist):
-            raise TycheIndividualsException(
-                f"Unsupported observation of expectation over {type(prev_role_value).__name__}")
-
         if symbol in self.role_learning_strats:
             ref = cast(RoleFunctionSymbolReference, self.roles.get_reference(symbol))
             self.role_learning_strats[symbol].apply(self, ref, expectation, likelihood, learning_rate)
 
         # Propagate the observation!
-        possible_matching_individuals = prev_role_value.reverse_expectation_influences(
+        possible_matching_individuals = prev_role_value.reverse_expectation_learning_params(
             expectation.eval_node, expectation.given_node, likelihood
         )
         concept_given = Given(expectation.eval_node, expectation.given_node)
-        for ctx, prob in possible_matching_individuals:
-            if ctx is not None:
-                ctx.observe(concept_given, likelihood, learning_rate * prob)
+        for ctx, child_likelihood, child_influence in possible_matching_individuals:
+            if child_influence > 0:
+                ctx.observe(concept_given, child_likelihood, learning_rate * child_influence)
 
     def _observe_atom(self, node: Concept, likelihood: float, learning_rate: float):
         """
@@ -914,7 +910,7 @@ class IdentityIndividual(TycheContext):
         return self.id_role_value.remove(individual)
 
     def eval(self, node: 'ADLNode') -> float:
-        return Expectation.evaluate_for_role(self.id_role_value, node, ALWAYS)
+        return self.id_role_value.calculate_expectation(node, ALWAYS)
 
     def eval_role(self, role: 'Role') -> RoleDist:
         return role.direct_eval(self)
@@ -949,12 +945,12 @@ class IdentityIndividual(TycheContext):
             self.learning_strat.apply(self, self.id_role_ref, implicit_expectation, likelihood, learning_rate)
 
         # Propagate the observation!
-        possible_matching_individuals = prev_id_value.reverse_expectation_influences(
+        possible_matching_individuals = prev_id_value.reverse_expectation_learning_params(
             node, given, likelihood
         )
-        for ctx, prob in possible_matching_individuals:
-            if ctx is not None:
-                ctx.observe(observation, likelihood, learning_rate * prob)
+        for ctx, child_likelihood, child_influence in possible_matching_individuals:
+            if child_influence > 0:
+                ctx.observe(observation, child_likelihood, learning_rate * child_influence)
 
     def __iter__(self):
         """
