@@ -1,0 +1,7 @@
+numpy~=1.23.3
+scipy~=1.9.1
+setuptools~=63.4.1
+pytest~=7.1.2
+matplotlib~=3.5.2
+jupyter~=1.0.0
+problog~=2.2.4
