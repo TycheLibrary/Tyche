@@ -8,7 +8,7 @@ we can learn that Bob uses emojis often, without knowing what messages
 Bob sent. This is achieved through the use of the observation learning
 mechanisms of the individuals module of Tyche.
 
-The Jupyter notebook anonymous_messages.ipynb in this directory
+The Jupyter notebook walkthrough.ipynb in this directory
 also provides similar functionality, but with additional description
 and analysis. It is also simpler than this example, which may be easier
 to follow. This example is used to test extending the example from

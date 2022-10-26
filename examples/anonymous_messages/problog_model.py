@@ -61,11 +61,6 @@ class ProbLogImplementation(AnonymousMessagesImplementation):
                 self.learning_program_statements.append(
                     Term("conversed_with")(person_constant, other_constant, None, p=t(Constant(weight / total_weight))))
 
-        # Construct the start of the program (without the evidence/queries added later), to print it.
-        p = SimpleProgram()
-        for statement in self.learning_program_statements:
-            p += statement
-
     def get_model(self, *, debug_program_output_file: Optional[str] = None) -> Model:
         # Create the learning program.
         learning_program = SimpleProgram()
@@ -77,7 +72,7 @@ class ProbLogImplementation(AnonymousMessagesImplementation):
 
         # Learn!
         score, weights, atoms, iteration, lfi_problem = lfi.run_lfi(
-            learning_program, self.learning_evidence, max_iter=10)
+            learning_program, self.learning_evidence, max_iter=5)
 
         # Build a model from the results, relying on the fact that weights is sorted in program order.
         new_model = self.model.copy()

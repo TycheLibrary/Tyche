@@ -82,6 +82,13 @@ class Model:
     def copy(self) -> 'Model':
         return Model(self.bob.copy(), self.alice.copy(), self.jeff.copy())
 
+    def __str__(self):
+        # Use Tyche's functionality to print the model.
+        from .tyche_model import TycheImplementation
+        tyche_print_imp = TycheImplementation()
+        tyche_print_imp.set_model(self)
+        return "- " + "\n- ".join(str(p) for p in tyche_print_imp.all)
+
 
 class AnonymousMessagesImplementation:
     """

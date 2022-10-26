@@ -4,13 +4,12 @@ the ProbLog implementation of the anonymous messages example.
 """
 import logging
 import time
-from typing import cast
 
 import numpy as np
 
 from examples.anonymous_messages.base_model import AnonymousMessagesImplementation, Message, Model, ModelPerson
 from examples.anonymous_messages.problog_model import ProbLogImplementation
-from examples.anonymous_messages.tyche_model import Person, TycheImplementation
+from examples.anonymous_messages.tyche_model import TycheImplementation
 
 
 def construct_target_model() -> Model:
@@ -22,12 +21,12 @@ def construct_target_model() -> Model:
     bob = ModelPerson("Bob", uses_emoji=0.9, capitalises_first_word=0.4, is_positive=0.15)
     alice = ModelPerson("Alice", uses_emoji=0.1, capitalises_first_word=0.8, is_positive=0.4)
     jeff = ModelPerson("Jeff", uses_emoji=0.5, capitalises_first_word=0.5, is_positive=0.5)
-    bob.conversed_with[alice.name] = 1.5
-    bob.conversed_with[jeff.name] = 1
-    alice.conversed_with[bob.name] = 1
-    alice.conversed_with[jeff.name] = 3
-    jeff.conversed_with[alice.name] = 3
-    jeff.conversed_with[bob.name] = 1.5
+    bob.conversed_with[alice.name] = 60
+    bob.conversed_with[jeff.name] = 40
+    alice.conversed_with[bob.name] = 25
+    alice.conversed_with[jeff.name] = 75
+    jeff.conversed_with[alice.name] = 70
+    jeff.conversed_with[bob.name] = 30
     return Model(bob, alice, jeff)
 
 
@@ -56,11 +55,13 @@ def generate_conversation(rng: np.random.Generator, person: ModelPerson, message
 
 def run_inference_test(
         imp: AnonymousMessagesImplementation, *,
-        no_tests: int = 2000, min_messages: int = 1, max_messages: int = 10):
+        no_tests: int = 100, min_messages: int = 1, max_messages: int = 10,
+        rng_seed: int = 42
+) -> tuple[list[int], dict[str, list[float]], list[float]]:
     """
     Runs tests on the given implementation to evaluate its performance at inferring authors of messages.
     """
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(rng_seed)
     target_model = construct_target_model()
     imp.set_model(target_model)
 
@@ -68,6 +69,9 @@ def run_inference_test(
         f"Evaluating the accuracy of the {imp.name} implementation to "
         f"predict the author of random sets of messages ({no_tests} tests per person, per message count)"
     )
+    result_no_messages: list[int] = []
+    result_correct_percentages: dict[str, list[float]] = {person.name: [] for person in target_model.all}
+    result_durations_ms: list[float] = []
     for no_messages in range(min_messages, max_messages + 1):
         start_time = time.time()
 
@@ -94,22 +98,66 @@ def run_inference_test(
                 if max_prob_author == person_name:
                     correct_per_person[recipient.name] += 1
 
+        correct_percentages = {name: 100 * correct / no_tests for name, correct in correct_per_person.items()}
         duration_ms = (time.time() - start_time) * 1000 / no_tests
+
+        result_no_messages.append(no_messages)
+        for name, correct_percentage in correct_percentages.items():
+            result_correct_percentages[name].append(correct_percentage)
+        result_durations_ms.append(duration_ms)
+
         print(f".. {no_messages} message{'s' if no_messages > 1 else ''}: ".ljust(17) + ", ".join(
-            [f"{name} = {100 * correct / no_tests:.1f}%" for name, correct in correct_per_person.items()]
+            [f"{name} = {correct_percentage:.1f}%" for name, correct_percentage in correct_percentages.items()]
         ).ljust(45) + f"({duration_ms:.2f} ms per evaluation)")
+
+    return result_no_messages, result_correct_percentages, result_durations_ms
+
+
+def print_learning_results(trial_results: list[Model]):
+    """
+    Collates the results from all the trials and prints them out.
+    """
+    print("Learnt People:")
+    target_model = construct_target_model()
+    for target in target_model.all:
+        learned: list[ModelPerson] = []
+        for model in trial_results:
+            learned.append(model.by_name[target.name])
+
+        learned_uses_emoji: list[float] = [p.uses_emoji for p in learned]
+        learned_capitalises: list[float] = [p.capitalises_first_word for p in learned]
+        learned_is_positive: list[float] = [p.is_positive for p in learned]
+
+        learned_conversed_with: dict[str, list[float]] = {}
+        for p in learned:
+            for name, prob in p.conversed_with.items():
+                if name not in learned_conversed_with:
+                    learned_conversed_with[name] = []
+                learned_conversed_with[name].append(100 * prob)
+
+        conversed_with_entries = [
+            f"{np.mean(p):.1f}% ± {np.std(p):.1f}%: {n}" for n, p in learned_conversed_with.items()
+        ]
+
+        print(f"- {target.name}("
+              f"capitalises_first_word={np.mean(learned_capitalises):.3f} ± {np.std(learned_capitalises):.3f}, "
+              f"is_positive={np.mean(learned_is_positive):.3f} ± {np.std(learned_is_positive):.3f}, "
+              f"uses_emoji={np.mean(learned_uses_emoji):.3f} ± {np.std(learned_uses_emoji):.3f}, "
+              f"conversed_with={{" + ", ".join(conversed_with_entries) + "})")
+    print()
 
 
 def run_learning_test(
         imp: AnonymousMessagesImplementation, *,
-        no_trials: int = 10, no_observations: int = 2500, repetitions: int = 2,
-        min_messages: int = 2, max_messages: int = 4):
+        no_trials: int = 1, no_observations: int = 5000, repetitions: int = 2,
+        min_messages: int = 2, max_messages: int = 4,
+        rng_seed: int = 42
+):
     """
     Runs tests on the given implementation to evaluate its performance at
     learning the ground-truth model.
     """
-    rng = np.random.default_rng()
-    tyche_print_imp = TycheImplementation()
+    rng = np.random.default_rng(rng_seed)
     target_model = construct_target_model()
 
     print(
@@ -144,6 +192,8 @@ def run_learning_test(
         if example_observations is None:
             example_observations = []
             for person_name, received_messages in observations[0:4]:
+                # Use Tyche's functionality to print the observation.
+                tyche_print_imp = TycheImplementation()
                 obs = tyche_print_imp.build_received_messages_observation(received_messages)
                 example_observations.append(f"Observe at {person_name}: {str(obs)}")
 
@@ -162,47 +212,12 @@ def run_learning_test(
     print("- " + "\n- ".join(str(obs) for obs in example_observations))
     print()
 
-    print("Ground-Truth People:")
-    tyche_print_imp.set_model(target_model)
-    print("- " + "\n- ".join(str(p) for p in tyche_print_imp.all))
+    print(f"Ground-Truth People:\n{target_model}")
     print()
 
-    # Collate trial results.
-    print("Learnt People:")
-    tyche_print_imp.set_model(target_model)
-    target_people = tyche_print_imp.all
-    for target in target_people:
-        learned = []
-        for model in trial_results:
-            tyche_print_imp.set_model(model)
-            learned.append(tyche_print_imp.by_name[target.name])
+    print_learning_results(trial_results)
 
-        learned_uses_emoji = [p.uses_emoji() for p in learned]
-        learned_capitalises = [p.capitalises_first_word() for p in learned]
-        learned_is_positive = [p.is_positive() for p in learned]
-
-        learned_conversed_with: dict[str, list[float]] = {}
-        for p in learned:
-            for ctx, prob in p.conversed_with():
-                name = cast(Person, ctx).name
-                if name not in learned_conversed_with:
-                    learned_conversed_with[name] = []
-                learned_conversed_with[name].append(100 * prob)
-
-        conversed_with_entries = [
-            f"{np.mean(p):.1f}% ± {np.std(p):.1f}%: {n}" for n, p in learned_conversed_with.items()
-        ]
-
-        print(f"- {target.name}("
-              f"capitalises_first_word={np.mean(learned_capitalises):.3f} ± {np.std(learned_capitalises):.3f}, "
-              f"is_positive={np.mean(learned_is_positive):.3f} ± {np.std(learned_is_positive):.3f}, "
-              f"uses_emoji={np.mean(learned_uses_emoji):.3f} ± {np.std(learned_uses_emoji):.3f}, "
-              f"conversed_with={{" + ", ".join(conversed_with_entries) + "})")
-    print()
-
-    print("Initial People that were Trained into the Learned People:")
-    tyche_print_imp.set_model(create_initial_learn_model())
-    print("- " + "\n- ".join(str(p) for p in tyche_print_imp.all))
+    print(f"Initial People that were Trained into the Learned People:\n{create_initial_learn_model()}")
     print()
 
 
@@ -222,6 +237,7 @@ class FilteringStreamHandler(logging.StreamHandler):
 
 
 if __name__ == "__main__":
+    # Enables ProbLog's debugging output.
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",

@@ -46,11 +46,18 @@ if __name__ == "__main__":
 
     # Construct a good student.
     good_student = Student("Good", 0.8)
+
+    alice = Student("Alice", 0.8)
+
     print(f"Example Good Student = {good_student}")
 
     # Query the chance of them getting good grades, or being tall and positive.
-    query_sentence = Concept("good_grades") | (Concept("tall") & Concept("positive"))
-    print(f"- P {query_sentence} = {good_student.eval(query_sentence):.3f}")
+
+    query = Concept("good_grades") | (Concept("tall") & Concept("positive"))
+    print(f"P(good_grades ∨ (tall ∧ positive)) = {alice.eval(query):.3f}")
+
+    alice.observe(Expectation("conversed_with", Concept("tall") & Concept("positive")))
+
     print()
 
     # Construct a couple bad students.
@@ -89,8 +96,8 @@ if __name__ == "__main__":
 
     # Observe that the good student conversed with someone who got
     # good grades. They only could have conversed with the students
-    # that we thought got bad grades. Therefore, it is more likely
-    # that those students get good grades more often.
+    # that we believe get bad grades. Therefore, it is more likely
+    # that those students get good grades more often than we believe.
     observe_sentence = Expectation("conversed_with", "good_grades")
     print("Good Student:")
     print(f"- Observe {observe_sentence}")
