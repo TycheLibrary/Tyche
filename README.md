@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/TycheLibrary/Tyche/master/docs/banner.png" alt="Tyche Logo" height="200" width="480" />
+  <img src="https://raw.githubusercontent.com/TycheLibrary/Tyche/master/docs/banner.png" alt="Tyche Logo" width="480" />
 </p>
 
 Tyche is a Python library to support the representation of, and the reasoning about, aleatoric information.
