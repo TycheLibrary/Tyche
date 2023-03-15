@@ -67,9 +67,9 @@ class TestDistributions(unittest.TestCase):
         Tests truncating NormalDist.
         """
         rng = np.random.default_rng()
-        a = TruncateContinuousProbDist(NormalDist(0, 1), 0, 1)
-        b = TruncateContinuousProbDist(NormalDist(-1, 3), -1, 1)
-        c = TruncateContinuousProbDist(NormalDist(-1, 6), -3, 1)
+        a = TruncatedContinuousProbDist(NormalDist(0, 1), 0, 1)
+        b = TruncatedContinuousProbDist(NormalDist(-1, 3), -1, 1)
+        c = TruncatedContinuousProbDist(NormalDist(-1, 6), -3, 1)
         self._test_dist_min_max(rng, a, 0, 1)
         self._test_dist_min_max(rng, b, -1, 1)
         self._test_dist_min_max(rng, c, -3, 1)

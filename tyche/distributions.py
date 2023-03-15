@@ -95,7 +95,7 @@ class ContinuousProbDist(ProbDist):
             maximum: An upper limit on the numeric values in this distribution
               after truncation.
         """
-        return TruncateContinuousProbDist(self, minimum, maximum)
+        return TruncatedContinuousProbDist(self, minimum, maximum)
 
     def _shift(self, shift: float) -> 'ContinuousProbDist':
         """
@@ -202,7 +202,7 @@ class ContinuousProbDist(ProbDist):
         to sampling values from this and the other probability distributions, and then
         adding them.
         """
-        # Scalar additions such as UniformDist(0, 1) < 0.1
+        # Scalar additions such as UniformDist(0, 1) + 0.1
         if np.isscalar(other):
             return self._shift(float(other))
 
@@ -235,13 +235,13 @@ class ContinuousProbDist(ProbDist):
             f"Addition of distributions of type {type(self)} and {type(other)} is not yet supported")
 
     def __radd__(self, other: ProbDistLike) -> 'ContinuousProbDist':
-        return self + other  # Add is commutative
+        return self.__add__(other)  # Add is commutative
 
     def __mul__(self, other: ProbDistLike) -> 'ContinuousProbDist':
         """
-        Adds the other scalar or probability distribution to this probability distribution.
+        Multiplies the other scalar or probability distribution by this probability distribution.
         """
-        # Scalar additions such as UniformDist(0, 1) < 0.1
+        # Scalar multiplications such as UniformDist(0, 1) * 0.1
         if np.isscalar(other):
             return self._scale(float(other))
 
@@ -249,7 +249,7 @@ class ContinuousProbDist(ProbDist):
         raise NotImplementedError("Multiplication of distributions is not yet implemented")
 
     def __rmul__(self, other: ProbDistLike) -> 'ContinuousProbDist':
-        return self * other  # Mul is commutative
+        return self.__mul__(other)  # Mul is commutative
 
     def __truediv__(self, other: ProbDistLike) -> 'ContinuousProbDist':
         """
@@ -299,16 +299,15 @@ class ContinuousProbDist(ProbDist):
     def __gt__(self, other: ProbDistLike) -> ArrayLike:
         """
         Returns the probability that a value sampled from this distribution
-        is less than or equal to a value sampled from other.
-        As this is continuous, this is the same as less than.
+        is greater than a value sampled from other.
         """
         return 1.0 - (self <= other)
 
     def __ge__(self, other: ProbDistLike) -> ArrayLike:
         """
         Returns the probability that a value sampled from this distribution
-        is less than or equal to a value sampled from other.
-        As this is continuous, this is the same as less than.
+        is greater than or equal to a value sampled from other.
+        As this is continuous, this is the same as greater than.
         """
         return self > other
 
@@ -334,9 +333,6 @@ class LinearTransformContinuousProbDist(ContinuousProbDist):
         self._dist = dist
         self._linear_shift = shift
         self._linear_scale = scale
-        self._pdf_mul = 1.0 / abs(scale)
-        self._inverse_shift = -shift / scale
-        self._inverse_scale = 1.0 / scale
 
     def _shift(self, shift: float) -> 'ContinuousProbDist':
         return LinearTransformContinuousProbDist(self._dist, self._linear_shift + shift, self._linear_scale)
@@ -348,9 +344,9 @@ class LinearTransformContinuousProbDist(ContinuousProbDist):
         """ Applies the shift and scale of this transformation to x. """
         return self._linear_shift + self._linear_scale * x
 
-    def _inverse_transform(self, x: ArrayLike) -> ArrayLike:
-        """ Applies the shift and scale of this transformation to x. """
-        return self._inverse_shift + self._inverse_scale * x
+    def _inverse_transform(self, y: ArrayLike) -> ArrayLike:
+        """ Applies the inverse shift and scale of this transformation to y. """
+        return y / self._linear_scale  - self._linear_shift / self._linear_scale
 
     def sample(self, rng: np.random.Generator, shape: int = None) -> ArrayLike:
         return self._transform(self._dist.sample(rng, shape))
@@ -363,29 +359,30 @@ class LinearTransformContinuousProbDist(ContinuousProbDist):
         return self._dist.variance() * self._linear_scale**2
 
     def pdf(self, x: ArrayLike) -> ArrayLike:
-        return self._dist.pdf(self._inverse_transform(x)) * self._pdf_mul
+        return self._dist.pdf(self._inverse_transform(x)) / abs(self._linear_scale)
 
     def inverse_cdf(self, prob: ArrayLike) -> ArrayLike:
         prob = prob if self._linear_scale >= 0 else 1 - prob
         return self._transform(self._dist.inverse_cdf(prob))
 
     def __str__(self):
-        if self._shift == 0:
-            return "({} * {})".format(self._linear_scale, str(self._dist))
-        if self._scale == 1:
-            return "({} + {})".format(self._linear_shift, str(self._dist))
-
-        return "({} + {} * {})".format(
-            self._linear_shift, self._linear_scale, str(self._dist)
-        )
+        if self._linear_shift == 0:
+            return f"({self._linear_scale} * {str(self._dist)})"
+        if self._linear_scale == 1:
+            return f"({self._linear_shift} + {str(self._dist)})"
+        if self._linear_scale < 0:
+            return f"({self._linear_shift} - {abs(self._linear_scale)} * {str(self._dist)})"
+        
+        return f"({self._linear_shift} + {self._linear_scale} * {str(self._dist)})"
 
     def __repr__(self):
-        return "LinearTransform(shift={}, scale={}, dist={})".format(
-            self._linear_shift, self._linear_scale, repr(self._dist)
+        return (
+            f"LinearTransformDist(shift={self._linear_shift}, "
+            f"scale={self._linear_scale}, dist={repr(self._dist)})"
         )
 
 
-class TruncateContinuousProbDist(ContinuousProbDist):
+class TruncatedContinuousProbDist(ContinuousProbDist):
     """
     Applies a truncation to a ContinuousProbDist. All values below `minimum`
     and above `maximum` are discarded.
@@ -399,9 +396,9 @@ class TruncateContinuousProbDist(ContinuousProbDist):
         """
         super().__init__()
         if maximum <= minimum:
-            raise TycheDistributionsException("TruncatedNormalDist maximum must be > than minimum. {} <= {}".format(
-                maximum, minimum
-            ))
+            raise TycheDistributionsException(
+                f"TruncatedNormalDist maximum must be > than minimum. {maximum} <= {minimum}"
+            )
 
         self._dist = dist
         self._minimum = minimum
@@ -410,9 +407,8 @@ class TruncateContinuousProbDist(ContinuousProbDist):
         self._upper_cdf = dist.cdf(maximum)
         if self._lower_cdf >= self._upper_cdf:
             raise TycheDistributionsException(
-                "The truncation of [{}, {}] applied to {} would result in an all-zero probability distribution".format(
-                    minimum, maximum, dist
-                )
+                f"The truncation of [{minimum}, {maximum}] applied to {dist} would result "
+                f"in an all-zero probability distribution"
             )
 
         self._inverse_transform_cdf_mul = self._upper_cdf - self._lower_cdf
@@ -422,7 +418,7 @@ class TruncateContinuousProbDist(ContinuousProbDist):
         if minimum >= self._minimum and maximum <= self._maximum:
             return self
 
-        return TruncateContinuousProbDist(
+        return TruncatedContinuousProbDist(
             self._dist,
             min(self._minimum, minimum),
             min(self._maximum, maximum)
@@ -446,10 +442,10 @@ class TruncateContinuousProbDist(ContinuousProbDist):
         return self._dist.inverse_cdf(prob * self._inverse_transform_cdf_mul + self._lower_cdf)
 
     def __str__(self):
-        return "Truncate([{}, {}], {})".format(self._minimum, self._maximum, self._dist)
+        return f"Truncated([{self._minimum}, {self._maximum}], {self._dist})"
 
     def __repr__(self):
-        return "Truncate(min={}, max={}, dist={})".format(self._minimum, self._maximum, repr(self._dist))
+        return f"TruncatedDist(min={self._minimum}, max={self._maximum}, dist={repr(self._dist)})"
 
 
 class UniformDist(ContinuousProbDist):
@@ -467,9 +463,9 @@ class UniformDist(ContinuousProbDist):
         """
         super().__init__()
         if maximum <= minimum:
-            raise TycheDistributionsException("UniformDist maximum must be > than minimum. {} <= {}".format(
-                maximum, minimum
-            ))
+            raise TycheDistributionsException(
+                f"UniformDist maximum must be > than minimum. {maximum} <= {minimum}"
+            )
 
         self._minimum = minimum
         self._maximum = maximum
@@ -498,10 +494,10 @@ class UniformDist(ContinuousProbDist):
         return stats.uniform.ppf(prob, loc=self._minimum, scale=self._maximum - self._minimum)
 
     def __str__(self):
-        return "Uniform({:.3f} to {:.3f})".format(self._minimum, self._maximum)
+        return f"Uniform({self._minimum:.3f} to {self._maximum:.3f})"
 
     def __repr__(self):
-        return "UniformDist(min={}, max={})".format(self._minimum, self._maximum)
+        return f"UniformDist(min={self._minimum}, max={self._maximum})"
 
 
 class NormalDist(ContinuousProbDist):
@@ -517,7 +513,9 @@ class NormalDist(ContinuousProbDist):
         """
         super().__init__()
         if std_dev <= 0:
-            raise TycheDistributionsException("NormalDist std_dev must be > than 0. {} <= 0".format(std_dev))
+            raise TycheDistributionsException(
+                f"NormalDist std_dev must be > than 0. {std_dev} <= 0"
+            )
 
         self._mean = mean
         self._std_dev = std_dev
@@ -560,7 +558,7 @@ class NormalDist(ContinuousProbDist):
         return stats.norm.ppf(prob, loc=self._mean, scale=self._std_dev)
 
     def __str__(self):
-        return "Normal(mean={:.3f}, std_dev={:.3f})".format(self._mean, self._std_dev)
+        return f"Normal(mean={self._mean:.3f}, std_dev={self._std_dev:.3f})"
 
     def __repr__(self):
-        return "NormalDist(mean={}, std_dev={})".format(self._mean, self._std_dev)
+        return f"NormalDist(mean={self._mean}, std_dev={self._std_dev})"

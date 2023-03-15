@@ -11,9 +11,9 @@ from sphinx.ext.autodoc import ClassDocumenter, _
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'Tyche'
-copyright = '2022, Padraig Lamont, drtnf'
+copyright = '2023, Padraig Lamont, drtnf'
 author = 'Padraig Lamont, drtnf'
-release = 'v1.0.0'
+release = 'v1.0.1'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
