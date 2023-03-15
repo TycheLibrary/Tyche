@@ -1,6 +1,9 @@
 # IntelliJ IDEA
 .idea
 
+# VSCode
+.vscode
+
 # tokens
 github*
 
