@@ -16,7 +16,8 @@ be learnt through observation.
 **Tyche Paper:**
 
 - "Tyche: A library for probabilistic reasoning and belief modelling in Python"
-  by Padraig Lamont (2022): `arXiv link <https://arxiv.org/abs/2208.09838>`_
+  by Padraig Lamont (2022): `link <https://doi.org/10.1007/978-3-031-22695-3_27>`
+  and `old arXiv link <https://arxiv.org/abs/2208.09838>`_
 
 
 **Related Publications:**
