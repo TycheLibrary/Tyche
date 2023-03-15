@@ -23,6 +23,7 @@ fine-grained modelling of probabilistic belief systems, with a rigorous mathemat
 **Tyche Paper:**
 - "Tyche: A library for probabilistic reasoning and belief modelling in Python"
   by Padraig Lamont (2022): [link](https://doi.org/10.1007/978-3-031-22695-3_27)
+  and [old arXiv link](https://arxiv.org/abs/2208.09838)
 
 **Related Publications:**
 - "Aleatoric Description Logic for Probabilistic Reasoning" by
